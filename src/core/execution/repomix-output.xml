@@ -1,0 +1,5027 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+4. Repository files, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+<additional_info>
+
+</additional_info>
+
+</file_summary>
+
+<directory_structure>
+alliance/
+  AllianceRequestExecution.ts
+  AllianceRequestReplyExecution.ts
+  BreakAllianceExecution.ts
+utils/
+  BotBehavior.ts
+  BotNames.ts
+AttackExecution.ts
+BotExecution.ts
+BotSpawner.ts
+CityExecution.ts
+ConstructionExecution.ts
+DefensePostExecution.ts
+DonateGoldExecution.ts
+DonateTroopExecution.ts
+EmbargoExecution.ts
+EmojiExecution.ts
+ExecutionManager.ts
+FakeHumanExecution.ts
+MIRVExecution.ts
+MissileSiloExecution.ts
+MoveWarshipExecution.ts
+NoOpExecution.ts
+NukeExecution.ts
+PlayerExecution.ts
+PortExecution.ts
+QuickChatExecution.ts
+RetreatExecution.ts
+SAMLauncherExecution.ts
+SAMMissileExecution.ts
+SetTargetTroopRatioExecution.ts
+ShellExecution.ts
+SpawnExecution.ts
+TargetPlayerExecution.ts
+TradeShipExecution.ts
+TransportShipExecution.ts
+Util.ts
+WarshipExecution.ts
+WinCheckExecution.ts
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="alliance/AllianceRequestExecution.ts">
+import { consolex } from "../../Consolex";
+import { Execution, Game, Player, PlayerID } from "../../game/Game";
+
+export class AllianceRequestExecution implements Execution {
+  private active = true;
+  private mg: Game = null;
+  private requestor: Player;
+  private recipient: Player;
+
+  constructor(
+    private requestorID: PlayerID,
+    private recipientID: PlayerID,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this.requestorID)) {
+      console.warn(
+        `AllianceRequestExecution requester ${this.requestorID} not found`,
+      );
+      this.active = false;
+      return;
+    }
+    if (!mg.hasPlayer(this.recipientID)) {
+      console.warn(
+        `AllianceRequestExecution recipient ${this.recipientID} not found`,
+      );
+      this.active = false;
+      return;
+    }
+
+    this.mg = mg;
+    this.requestor = mg.player(this.requestorID);
+    this.recipient = mg.player(this.recipientID);
+  }
+
+  tick(ticks: number): void {
+    if (this.requestor.isFriendly(this.recipient)) {
+      consolex.warn("already allied");
+    } else if (!this.requestor.canSendAllianceRequest(this.recipient)) {
+      consolex.warn("recent or pending alliance request");
+    } else {
+      this.requestor.createAllianceRequest(this.recipient);
+    }
+    this.active = false;
+  }
+
+  owner(): Player {
+    return null;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="alliance/AllianceRequestReplyExecution.ts">
+import { consolex } from "../../Consolex";
+import { Execution, Game, Player, PlayerID } from "../../game/Game";
+
+export class AllianceRequestReplyExecution implements Execution {
+  private active = true;
+  private mg: Game = null;
+  private requestor: Player;
+  private recipient: Player;
+
+  constructor(
+    private requestorID: PlayerID,
+    private recipientID: PlayerID,
+    private accept: boolean,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this.requestorID)) {
+      console.warn(
+        `AllianceRequestReplyExecution requester ${this.requestorID} not found`,
+      );
+      this.active = false;
+      return;
+    }
+    if (!mg.hasPlayer(this.recipientID)) {
+      console.warn(
+        `AllianceRequestReplyExecution recipient ${this.recipientID} not found`,
+      );
+      this.active = false;
+      return;
+    }
+    this.mg = mg;
+    this.requestor = mg.player(this.requestorID);
+    this.recipient = mg.player(this.recipientID);
+  }
+
+  tick(ticks: number): void {
+    if (this.requestor.isFriendly(this.recipient)) {
+      consolex.warn("already allied");
+    } else {
+      const request = this.requestor
+        .outgoingAllianceRequests()
+        .find((ar) => ar.recipient() == this.recipient);
+      if (request == null) {
+        consolex.warn("no alliance request found");
+      } else {
+        if (this.accept) {
+          request.accept();
+          this.requestor.updateRelation(this.recipient, 100);
+          this.recipient.updateRelation(this.requestor, 100);
+        } else {
+          request.reject();
+        }
+      }
+    }
+    this.active = false;
+  }
+
+  owner(): Player {
+    return null;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="alliance/BreakAllianceExecution.ts">
+import { consolex } from "../../Consolex";
+import { Execution, Game, Player, PlayerID } from "../../game/Game";
+
+export class BreakAllianceExecution implements Execution {
+  private active = true;
+  private requestor: Player;
+  private recipient: Player;
+  private mg: Game;
+
+  constructor(
+    private requestorID: PlayerID,
+    private recipientID: PlayerID,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this.requestorID)) {
+      console.warn(
+        `BreakAllianceExecution requester ${this.requestorID} not found`,
+      );
+      this.active = false;
+      return;
+    }
+    if (!mg.hasPlayer(this.recipientID)) {
+      console.warn(
+        `BreakAllianceExecution: recipient ${this.recipientID} not found`,
+      );
+      this.active = false;
+      return;
+    }
+    this.requestor = mg.player(this.requestorID);
+    this.recipient = mg.player(this.recipientID);
+    this.mg = mg;
+  }
+
+  tick(ticks: number): void {
+    const alliance = this.requestor.allianceWith(this.recipient);
+    if (alliance == null) {
+      consolex.warn("cant break alliance, not allied");
+    } else {
+      this.requestor.breakAlliance(alliance);
+      this.recipient.updateRelation(this.requestor, -200);
+      for (const player of this.mg.players()) {
+        if (player != this.requestor) {
+          player.updateRelation(this.requestor, -40);
+        }
+      }
+    }
+    this.active = false;
+  }
+
+  owner(): Player {
+    return null;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="utils/BotBehavior.ts">
+import {
+  AllianceRequest,
+  Game,
+  Player,
+  PlayerType,
+  Relation,
+  TerraNullius,
+  Tick,
+} from "../../game/Game";
+import { PseudoRandom } from "../../PseudoRandom";
+import { flattenedEmojiTable } from "../../Util";
+import { AttackExecution } from "../AttackExecution";
+import { EmojiExecution } from "../EmojiExecution";
+
+export class BotBehavior {
+  private enemy: Player | null = null;
+  private enemyUpdated: Tick;
+
+  private assistAcceptEmoji = flattenedEmojiTable.indexOf("👍");
+
+  private firstAttackSent = false;
+
+  constructor(
+    private random: PseudoRandom,
+    private game: Game,
+    private player: Player,
+    private triggerRatio: number,
+    private reserveRatio: number,
+  ) {}
+
+  handleAllianceRequests() {
+    for (const req of this.player.incomingAllianceRequests()) {
+      if (shouldAcceptAllianceRequest(this.player, req)) {
+        req.accept();
+      } else {
+        req.reject();
+      }
+    }
+  }
+
+  private emoji(player: Player, emoji: number) {
+    if (player.type() !== PlayerType.Human) return;
+    this.game.addExecution(
+      new EmojiExecution(this.player.id(), player.id(), emoji),
+    );
+  }
+
+  forgetOldEnemies() {
+    // Forget old enemies
+    if (this.game.ticks() - this.enemyUpdated > 100) {
+      this.enemy = null;
+    }
+  }
+
+  checkIncomingAttacks() {
+    // Switch enemies if we're under attack
+    const incomingAttacks = this.player.incomingAttacks();
+    if (incomingAttacks.length > 0) {
+      this.enemy = incomingAttacks
+        .sort((a, b) => b.troops() - a.troops())[0]
+        .attacker();
+      this.enemyUpdated = this.game.ticks();
+    }
+  }
+
+  assistAllies() {
+    outer: for (const ally of this.player.allies()) {
+      if (ally.targets().length === 0) continue;
+      if (this.player.relation(ally) < Relation.Friendly) {
+        // this.emoji(ally, "🤦");
+        continue;
+      }
+      for (const target of ally.targets()) {
+        if (target === this.player) {
+          // this.emoji(ally, "💀");
+          continue;
+        }
+        if (this.player.isAlliedWith(target)) {
+          // this.emoji(ally, "👎");
+          continue;
+        }
+        // All checks passed, assist them
+        this.player.updateRelation(ally, -20);
+        this.enemy = target;
+        this.enemyUpdated = this.game.ticks();
+        this.emoji(ally, this.assistAcceptEmoji);
+        break outer;
+      }
+    }
+  }
+
+  selectEnemy(): Player | null {
+    if (this.enemy === null) {
+      // Save up troops until we reach the trigger ratio
+      const maxPop = this.game.config().maxPopulation(this.player);
+      const ratio = this.player.population() / maxPop;
+      if (ratio < this.triggerRatio) return null;
+    }
+
+    // Prefer neighboring bots
+    if (this.enemy === null) {
+      const bots = this.player
+        .neighbors()
+        .filter((n) => n.isPlayer() && n.type() === PlayerType.Bot) as Player[];
+      if (bots.length > 0) {
+        const density = (p: Player) => p.troops() / p.numTilesOwned();
+        this.enemy = bots.sort((a, b) => density(a) - density(b))[0];
+        this.enemyUpdated = this.game.ticks();
+      }
+    }
+
+    // Select the most hated player
+    if (this.enemy === null) {
+      const mostHated = this.player.allRelationsSorted()[0] ?? null;
+      if (mostHated != null && mostHated.relation === Relation.Hostile) {
+        this.enemy = mostHated.player;
+        this.enemyUpdated = this.game.ticks();
+      }
+    }
+
+    // Sanity check, don't attack our allies or teammates
+    if (this.enemy && this.player.isFriendly(this.enemy)) {
+      this.enemy = null;
+    }
+    return this.enemy;
+  }
+
+  selectRandomEnemy(): Player | TerraNullius | null {
+    if (this.enemy === null) {
+      // Save up troops until we reach the trigger ratio
+      const maxPop = this.game.config().maxPopulation(this.player);
+      const ratio = this.player.population() / maxPop;
+      if (ratio < this.triggerRatio) return null;
+
+      // Choose a new enemy randomly
+      const neighbors = this.player.neighbors();
+      for (const neighbor of this.random.shuffleArray(neighbors)) {
+        if (!neighbor.isPlayer()) continue;
+        if (this.player.isFriendly(neighbor)) continue;
+        if (neighbor.type() == PlayerType.FakeHuman) {
+          if (this.random.chance(2)) {
+            continue;
+          }
+        }
+        this.enemy = neighbor;
+        this.enemyUpdated = this.game.ticks();
+      }
+
+      // Select a traitor as an enemy
+      const traitors = this.player
+        .neighbors()
+        .filter((n) => n.isPlayer() && n.isTraitor()) as Player[];
+      if (traitors.length > 0) {
+        const toAttack = this.random.randElement(traitors);
+        const odds = this.player.isFriendly(toAttack) ? 6 : 3;
+        if (this.random.chance(odds)) {
+          this.enemy = toAttack;
+          this.enemyUpdated = this.game.ticks();
+        }
+      }
+    }
+
+    // Sanity check, don't attack our allies or teammates
+    if (this.enemy && this.player.isFriendly(this.enemy)) {
+      this.enemy = null;
+    }
+    return this.enemy;
+  }
+
+  sendAttack(target: Player | TerraNullius) {
+    if (target.isPlayer() && this.player.isOnSameTeam(target)) return;
+    const maxPop = this.game.config().maxPopulation(this.player);
+    const maxTroops = maxPop * this.player.targetTroopRatio();
+    const targetTroops = maxTroops * this.reserveRatio;
+    // Don't wait until it has sufficient reserves to send the first attack
+    // to prevent the bot from waiting too long at the start of the game.
+    const troops = this.firstAttackSent
+      ? this.player.troops() - targetTroops
+      : this.player.troops() / 5;
+    if (troops < 1) return;
+    this.firstAttackSent = true;
+    this.game.addExecution(
+      new AttackExecution(
+        troops,
+        this.player.id(),
+        target.isPlayer() ? target.id() : null,
+      ),
+    );
+  }
+}
+
+function shouldAcceptAllianceRequest(player: Player, request: AllianceRequest) {
+  const notTraitor = !request.requestor().isTraitor();
+  const noMalice = player.relation(request.requestor()) >= Relation.Neutral;
+  const requestorIsMuchLarger =
+    request.requestor().numTilesOwned() > player.numTilesOwned() * 3;
+  const notTooManyAlliances =
+    requestorIsMuchLarger || request.requestor().alliances().length < 3;
+  return notTraitor && noMalice && notTooManyAlliances;
+}
+</file>
+
+<file path="utils/BotNames.ts">
+export const BOT_NAME_PREFIXES = [
+  "Akkadian",
+  "Babylonian",
+  "Sumerian",
+  "Hittite",
+  "Phoenician",
+  "Canaanite",
+  "Minoan",
+  "Mycenaean",
+  "Etruscan",
+  "Scythian",
+  "Thracian",
+  "Dacian",
+  "Illyrian",
+  "Median",
+  "Chaldean",
+  "Roman",
+  "Greek",
+  "Byzantine",
+  "Persian",
+  "Parthian",
+  "Seleucid",
+  "Ptolemaic",
+  "Palmyrene",
+  "Macedonian",
+  "Carthaginian",
+  "Ming",
+  "Tang",
+  "Song",
+  "Yuan",
+  "Mauryan",
+  "Kushan",
+  "Rajput",
+  "Mughal",
+  "Satavahana",
+  "Vijayanagara",
+  "Egyptian",
+  "Nubian",
+  "Kushite",
+  "Aksumite",
+  "Ethiopian",
+  "Songhai",
+  "Malian",
+  "Ghanaian",
+  "Benin",
+  "Ashanti",
+  "Zulu",
+  "Tuareg",
+  "Berber",
+  "Kanem-Bornu",
+  "Buganda",
+  "Mossi",
+  "Swahili",
+  "Somali",
+  "Wolof",
+  "Umayyad",
+  "Abbasid",
+  "Ayyubid",
+  "Fatimid",
+  "Mamluk",
+  "Seljuk",
+  "Safavid",
+  "Ottoman",
+  "Almoravid",
+  "Almohad",
+  "Rashidun",
+  "Ziyarid",
+  "Frankish",
+  "Visigothic",
+  "Ostrogothic",
+  "Viking",
+  "Norman",
+  "Saxon",
+  "Anglo-Saxon",
+  "Celtic",
+  "Gaulish",
+  "Carolingian",
+  "Merovingian",
+  "Capetian",
+  "Plantagenet",
+  "Tudor",
+  "Stuart",
+  "Habsburg",
+  "Romanov",
+  "Lancaster",
+  "York",
+  "Bourbon",
+  "Napoleonic",
+  "British",
+  "French",
+  "Spanish",
+  "Portuguese",
+  "Dutch",
+  "Russian",
+  "German",
+  "Italian",
+  "Swedish",
+  "Norwegian",
+  "Danish",
+  "Polish",
+  "Hungarian",
+  "Austrian",
+  "Swiss",
+  "Czech",
+  "Slovak",
+  "Serbian",
+  "Croatian",
+  "Bosnian",
+  "Montenegrin",
+  "Bulgarian",
+  "Romanian",
+  "Apache",
+  "Sioux",
+  "Cherokee",
+  "Navajo",
+  "Iroquois",
+  "Inuit",
+  "Arawak",
+  "Carib",
+  "Taino",
+  "Aztec",
+  "Mayan",
+  "Incan",
+  "Mapuche",
+  "Guarani",
+  "Tupi",
+  "Yanomami",
+  "Zuni",
+  "Hopi",
+  "Kiowa",
+  "Comanche",
+  "Shoshone",
+  "Japanese",
+  "Ryukyu",
+  "Ainu",
+  "Cham",
+  "Khmer",
+  "Thai",
+  "Vietnamese",
+  "Burmese",
+  "Balinese",
+  "Malay",
+  "Filipino",
+  "Mongolian",
+  "Korean",
+  "Tibetan",
+  "Manchu",
+  "Uyghur",
+  "Hmong",
+  "Karen",
+  "Pyu",
+  "Hawaiian",
+  "Fijian",
+  "Tongan",
+  "Samoan",
+  "Maori",
+  "Micronesian",
+  "Hebrew",
+  "Armenian",
+  "Georgian",
+  "Phoenician",
+  "Chaldean",
+  "Kurdish",
+  "Turkic",
+  "Kazakh",
+  "Uzbek",
+  "Kyrgyz",
+  "Tajik",
+  "Uighur",
+  "Pashtun",
+  "Baloch",
+  "Afghan",
+  "Persian",
+];
+export const BOT_NAME_SUFFIXES = [
+  "Empire",
+  "Dynasty",
+  "Kingdom",
+  "Queendom",
+  "Sultanate",
+  "Confederation",
+  "Union",
+  "Republic",
+  "Caliphate",
+  "Dominion",
+  "Realm",
+  "State",
+  "Federation",
+  "Territory",
+  "Commonwealth",
+  "League",
+  "Duchy",
+  "Province",
+  "Protectorate",
+  "Colony",
+  "Mandate",
+  "Free State",
+  "Canton",
+  "Region",
+  "Nation",
+  "Assembly",
+  "Hierarchy",
+  "Archduchy",
+  "Grand Duchy",
+  "Metropolis",
+  "Cluster",
+  "Alliance",
+  "Tribunal",
+  "Council",
+  "Confederacy",
+  "Order",
+  "Regime",
+  "Dominion",
+  "Syndicate",
+  "Guild",
+  "Corporation",
+  "Patriarchy",
+  "Matriarchy",
+  "Legion",
+  "Horde",
+  "Clan",
+  "Brotherhood",
+  "Sisterhood",
+  "Ascendancy",
+  "Supremacy",
+  "Province",
+  "Kingdoms",
+  "Tribes",
+  "Dominion",
+  "Assembly",
+  "Republics",
+];
+</file>
+
+<file path="AttackExecution.ts">
+import { PriorityQueue } from "@datastructures-js/priority-queue";
+import { renderNumber, renderTroops } from "../../client/Utils";
+import {
+  Attack,
+  Execution,
+  Game,
+  MessageType,
+  Player,
+  PlayerID,
+  PlayerType,
+  TerrainType,
+  TerraNullius,
+} from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { PseudoRandom } from "../PseudoRandom";
+
+const malusForRetreat = 25;
+
+export class AttackExecution implements Execution {
+  private breakAlliance = false;
+  private active: boolean = true;
+  private toConquer: PriorityQueue<TileContainer> =
+    new PriorityQueue<TileContainer>((a: TileContainer, b: TileContainer) => {
+      return a.priority - b.priority;
+    });
+  private random = new PseudoRandom(123);
+
+  private _owner: Player;
+  private target: Player | TerraNullius;
+
+  private mg: Game;
+
+  private border = new Set<TileRef>();
+
+  private attack: Attack = null;
+
+  constructor(
+    private startTroops: number | null = null,
+    private _ownerID: PlayerID,
+    private _targetID: PlayerID | null,
+    private sourceTile: TileRef | null = null,
+    private removeTroops: boolean = true,
+  ) {}
+
+  public targetID(): PlayerID {
+    return this._targetID;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+
+  init(mg: Game, ticks: number) {
+    if (!this.active) {
+      return;
+    }
+    this.mg = mg;
+
+    if (!mg.hasPlayer(this._ownerID)) {
+      console.warn(`player ${this._ownerID} not found`);
+      this.active = false;
+      return;
+    }
+    if (this._targetID != null && !mg.hasPlayer(this._targetID)) {
+      console.warn(`target ${this._targetID} not found`);
+      this.active = false;
+      return;
+    }
+
+    this._owner = mg.player(this._ownerID);
+    this.target =
+      this._targetID == this.mg.terraNullius().id()
+        ? mg.terraNullius()
+        : mg.player(this._targetID);
+
+    if (this.target && this.target.isPlayer()) {
+      const targetPlayer = this.target as Player;
+      if (
+        targetPlayer.type() != PlayerType.Bot &&
+        this._owner.type() != PlayerType.Bot
+      ) {
+        // Don't let bots embargo since they can't trade anyways.
+        targetPlayer.addEmbargo(this._owner.id());
+      }
+    }
+
+    if (this._owner == this.target) {
+      console.error(`Player ${this._owner} cannot attack itself`);
+      this.active = false;
+      return;
+    }
+
+    if (
+      this.target.isPlayer() &&
+      this.mg.config().numSpawnPhaseTurns() +
+        this.mg.config().spawnImmunityDuration() >
+        this.mg.ticks()
+    ) {
+      console.warn("cannot attack player during immunity phase");
+      this.active = false;
+      return;
+    }
+
+    if (this.startTroops == null) {
+      this.startTroops = this.mg
+        .config()
+        .attackAmount(this._owner, this.target);
+    }
+    if (this.removeTroops) {
+      this.startTroops = Math.min(this._owner.troops(), this.startTroops);
+      this._owner.removeTroops(this.startTroops);
+    }
+    this.attack = this._owner.createAttack(
+      this.target,
+      this.startTroops,
+      this.sourceTile,
+    );
+
+    for (const incoming of this._owner.incomingAttacks()) {
+      if (incoming.attacker() == this.target) {
+        // Target has opposing attack, cancel them out
+        if (incoming.troops() > this.attack.troops()) {
+          incoming.setTroops(incoming.troops() - this.attack.troops());
+          this.attack.delete();
+          this.active = false;
+          return;
+        } else {
+          this.attack.setTroops(this.attack.troops() - incoming.troops());
+          incoming.delete();
+        }
+      }
+    }
+    for (const outgoing of this._owner.outgoingAttacks()) {
+      if (
+        outgoing != this.attack &&
+        outgoing.target() == this.attack.target() &&
+        outgoing.sourceTile() == this.attack.sourceTile()
+      ) {
+        // Existing attack on same target, add troops
+        outgoing.setTroops(outgoing.troops() + this.attack.troops());
+        this.active = false;
+        this.attack.delete();
+        return;
+      }
+    }
+
+    if (this.sourceTile != null) {
+      this.addNeighbors(this.sourceTile);
+    } else {
+      this.refreshToConquer();
+    }
+
+    if (this.target.isPlayer()) {
+      if (this._owner.isAlliedWith(this.target)) {
+        // No updates should happen in init.
+        this.breakAlliance = true;
+      }
+      this.target.updateRelation(this._owner, -80);
+    }
+  }
+
+  private refreshToConquer() {
+    this.toConquer.clear();
+    this.border.clear();
+    for (const tile of this._owner.borderTiles()) {
+      this.addNeighbors(tile);
+    }
+  }
+
+  private retreat(malusPercent = 0) {
+    const deaths = this.attack.troops() * (malusPercent / 100);
+    if (deaths) {
+      this.mg.displayMessage(
+        `Attack cancelled, ${renderTroops(deaths)} soldiers killed during retreat.`,
+        MessageType.SUCCESS,
+        this._owner.id(),
+      );
+    }
+    this._owner.addTroops(this.attack.troops() - deaths);
+    this.attack.delete();
+    this.active = false;
+  }
+
+  tick(ticks: number) {
+    if (this.attack.retreated()) {
+      if (this.attack.target().isPlayer()) {
+        this.retreat(malusForRetreat);
+      } else {
+        this.retreat();
+      }
+      this.active = false;
+      return;
+    }
+
+    if (this.attack.retreating()) {
+      return;
+    }
+
+    if (!this.attack.isActive()) {
+      this.active = false;
+      return;
+    }
+
+    const alliance = this._owner.allianceWith(this.target as Player);
+    if (this.breakAlliance && alliance != null) {
+      this.breakAlliance = false;
+      this._owner.breakAlliance(alliance);
+    }
+    if (this.target.isPlayer() && this._owner.isAlliedWith(this.target)) {
+      // In this case a new alliance was created AFTER the attack started.
+      this.retreat();
+      return;
+    }
+
+    let numTilesPerTick = this.mg
+      .config()
+      .attackTilesPerTick(
+        this.attack.troops(),
+        this._owner,
+        this.target,
+        this.border.size + this.random.nextInt(0, 5),
+      );
+
+    while (numTilesPerTick > 0) {
+      if (this.attack.troops() < 1) {
+        this.attack.delete();
+        this.active = false;
+        return;
+      }
+
+      if (this.toConquer.size() == 0) {
+        this.refreshToConquer();
+        this.retreat();
+        return;
+      }
+
+      const tileToConquer = this.toConquer.dequeue().tile;
+      this.border.delete(tileToConquer);
+
+      const onBorder =
+        this.mg
+          .neighbors(tileToConquer)
+          .filter((t) => this.mg.owner(t) == this._owner).length > 0;
+      if (this.mg.owner(tileToConquer) != this.target || !onBorder) {
+        continue;
+      }
+      this.addNeighbors(tileToConquer);
+      const { attackerTroopLoss, defenderTroopLoss, tilesPerTickUsed } = this.mg
+        .config()
+        .attackLogic(
+          this.mg,
+          this.attack.troops(),
+          this._owner,
+          this.target,
+          tileToConquer,
+        );
+      numTilesPerTick -= tilesPerTickUsed;
+      this.attack.setTroops(this.attack.troops() - attackerTroopLoss);
+      if (this.target.isPlayer()) {
+        this.target.removeTroops(defenderTroopLoss);
+      }
+      this._owner.conquer(tileToConquer);
+      this.handleDeadDefender();
+    }
+  }
+
+  private addNeighbors(tile: TileRef) {
+    for (const neighbor of this.mg.neighbors(tile)) {
+      if (this.mg.isWater(neighbor) || this.mg.owner(neighbor) != this.target) {
+        continue;
+      }
+      this.border.add(neighbor);
+      const numOwnedByMe = this.mg
+        .neighbors(neighbor)
+        .filter((t) => this.mg.owner(t) == this._owner).length;
+      let mag = 0;
+      switch (this.mg.terrainType(tile)) {
+        case TerrainType.Plains:
+          mag = 1;
+          break;
+        case TerrainType.Highland:
+          mag = 1.5;
+          break;
+        case TerrainType.Mountain:
+          mag = 2;
+          break;
+      }
+      this.toConquer.enqueue(
+        new TileContainer(
+          neighbor,
+          (this.random.nextInt(0, 7) + 10) *
+            (1 - numOwnedByMe * 0.5 + mag / 2) +
+            this.mg.ticks(),
+        ),
+      );
+    }
+  }
+
+  private handleDeadDefender() {
+    if (!(this.target.isPlayer() && this.target.numTilesOwned() < 100)) return;
+
+    const gold = this.target.gold();
+    this.mg.displayMessage(
+      `Conquered ${this.target.displayName()} received ${renderNumber(
+        gold,
+      )} gold`,
+      MessageType.SUCCESS,
+      this._owner.id(),
+    );
+    this.target.removeGold(gold);
+    this._owner.addGold(gold);
+
+    for (let i = 0; i < 10; i++) {
+      for (const tile of this.target.tiles()) {
+        const borders = this.mg
+          .neighbors(tile)
+          .some((t) => this.mg.owner(t) == this._owner);
+        if (borders) {
+          this._owner.conquer(tile);
+        } else {
+          for (const neighbor of this.mg.neighbors(tile)) {
+            const no = this.mg.owner(neighbor);
+            if (no.isPlayer() && no != this.target) {
+              this.mg.player(no.id()).conquer(tile);
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  owner(): Player {
+    return this._owner;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+}
+
+class TileContainer {
+  constructor(
+    public readonly tile: TileRef,
+    public readonly priority: number,
+  ) {}
+}
+</file>
+
+<file path="BotExecution.ts">
+import { Execution, Game, Player } from "../game/Game";
+import { PseudoRandom } from "../PseudoRandom";
+import { simpleHash } from "../Util";
+import { BotBehavior } from "./utils/BotBehavior";
+
+export class BotExecution implements Execution {
+  private active = true;
+  private random: PseudoRandom;
+  private mg: Game;
+  private neighborsTerraNullius = true;
+
+  private behavior: BotBehavior | null = null;
+  private attackRate: number;
+  private attackTick: number;
+  private triggerRatio: number;
+  private reserveRatio: number;
+
+  constructor(private bot: Player) {
+    this.random = new PseudoRandom(simpleHash(bot.id()));
+    this.attackRate = this.random.nextInt(40, 80);
+    this.attackTick = this.random.nextInt(0, this.attackRate);
+    this.triggerRatio = this.random.nextInt(60, 90) / 100;
+    this.reserveRatio = this.random.nextInt(30, 60) / 100;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+
+  init(mg: Game) {
+    this.mg = mg;
+    this.bot.setTargetTroopRatio(0.7);
+  }
+
+  tick(ticks: number) {
+    if (ticks % this.attackRate != this.attackTick) return;
+
+    if (!this.bot.isAlive()) {
+      this.active = false;
+      return;
+    }
+
+    if (this.behavior === null) {
+      this.behavior = new BotBehavior(
+        this.random,
+        this.mg,
+        this.bot,
+        this.triggerRatio,
+        this.reserveRatio,
+      );
+    }
+
+    this.behavior.handleAllianceRequests();
+    this.maybeAttack();
+  }
+
+  private maybeAttack() {
+    const traitors = this.bot
+      .neighbors()
+      .filter((n) => n.isPlayer() && n.isTraitor()) as Player[];
+    if (traitors.length > 0) {
+      const toAttack = this.random.randElement(traitors);
+      const odds = this.bot.isFriendly(toAttack) ? 6 : 3;
+      if (this.random.chance(odds)) {
+        this.behavior.sendAttack(toAttack);
+        return;
+      }
+    }
+
+    if (this.neighborsTerraNullius) {
+      if (this.bot.sharesBorderWith(this.mg.terraNullius())) {
+        this.behavior.sendAttack(this.mg.terraNullius());
+        return;
+      }
+      this.neighborsTerraNullius = false;
+    }
+
+    this.behavior.forgetOldEnemies();
+    this.behavior.checkIncomingAttacks();
+    const enemy = this.behavior.selectRandomEnemy();
+    if (!enemy) return;
+    if (!this.bot.sharesBorderWith(enemy)) return;
+    this.behavior.sendAttack(enemy);
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+}
+</file>
+
+<file path="BotSpawner.ts">
+import { consolex } from "../Consolex";
+import { Game, PlayerInfo, PlayerType } from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { PseudoRandom } from "../PseudoRandom";
+import { GameID } from "../Schemas";
+import { simpleHash } from "../Util";
+import { SpawnExecution } from "./SpawnExecution";
+import { BOT_NAME_PREFIXES, BOT_NAME_SUFFIXES } from "./utils/BotNames";
+
+export class BotSpawner {
+  private random: PseudoRandom;
+  private bots: SpawnExecution[] = [];
+
+  constructor(
+    private gs: Game,
+    gameID: GameID,
+  ) {
+    this.random = new PseudoRandom(simpleHash(gameID));
+  }
+
+  spawnBots(numBots: number): SpawnExecution[] {
+    let tries = 0;
+    while (this.bots.length < numBots) {
+      if (tries > 10000) {
+        consolex.log("too many retries while spawning bots, giving up");
+        return this.bots;
+      }
+      const botName = this.randomBotName();
+      const spawn = this.spawnBot(botName);
+      if (spawn != null) {
+        this.bots.push(spawn);
+      } else {
+        tries++;
+      }
+    }
+    return this.bots;
+  }
+
+  spawnBot(botName: string): SpawnExecution | null {
+    const tile = this.randTile();
+    if (!this.gs.isLand(tile)) {
+      return null;
+    }
+    for (const spawn of this.bots) {
+      if (this.gs.manhattanDist(spawn.tile, tile) < 30) {
+        return null;
+      }
+    }
+    return new SpawnExecution(
+      new PlayerInfo("", botName, PlayerType.Bot, null, this.random.nextID()),
+      tile,
+    );
+  }
+
+  private randomBotName(): string {
+    const prefixIndex = this.random.nextInt(0, BOT_NAME_PREFIXES.length);
+    const suffixIndex = this.random.nextInt(0, BOT_NAME_SUFFIXES.length);
+    return `${BOT_NAME_PREFIXES[prefixIndex]} ${BOT_NAME_SUFFIXES[suffixIndex]}`;
+  }
+
+  private randTile(): TileRef {
+    return this.gs.ref(
+      this.random.nextInt(0, this.gs.width()),
+      this.random.nextInt(0, this.gs.height()),
+    );
+  }
+}
+</file>
+
+<file path="CityExecution.ts">
+import { consolex } from "../Consolex";
+import {
+  Execution,
+  Game,
+  Player,
+  PlayerID,
+  Unit,
+  UnitType,
+} from "../game/Game";
+import { TileRef } from "../game/GameMap";
+
+export class CityExecution implements Execution {
+  private player: Player;
+  private mg: Game;
+  private city: Unit;
+  private active: boolean = true;
+
+  constructor(
+    private ownerId: PlayerID,
+    private tile: TileRef,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    this.mg = mg;
+    if (!mg.hasPlayer(this.ownerId)) {
+      console.warn(`CityExecution: player ${this.ownerId} not found`);
+      this.active = false;
+      return;
+    }
+    this.player = mg.player(this.ownerId);
+  }
+
+  tick(ticks: number): void {
+    if (this.city == null) {
+      const spawnTile = this.player.canBuild(UnitType.City, this.tile);
+      if (spawnTile == false) {
+        consolex.warn("cannot build city");
+        this.active = false;
+        return;
+      }
+      this.city = this.player.buildUnit(UnitType.City, spawnTile, {});
+    }
+    if (!this.city.isActive()) {
+      this.active = false;
+      return;
+    }
+
+    if (this.player != this.city.owner()) {
+      this.player = this.city.owner();
+    }
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="ConstructionExecution.ts">
+import { consolex } from "../Consolex";
+import {
+  Execution,
+  Game,
+  Player,
+  PlayerID,
+  Tick,
+  Unit,
+  UnitType,
+} from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { CityExecution } from "./CityExecution";
+import { DefensePostExecution } from "./DefensePostExecution";
+import { MirvExecution } from "./MIRVExecution";
+import { MissileSiloExecution } from "./MissileSiloExecution";
+import { NukeExecution } from "./NukeExecution";
+import { PortExecution } from "./PortExecution";
+import { SAMLauncherExecution } from "./SAMLauncherExecution";
+import { WarshipExecution } from "./WarshipExecution";
+
+export class ConstructionExecution implements Execution {
+  private player: Player;
+  private construction: Unit;
+  private active: boolean = true;
+  private mg: Game;
+
+  private ticksUntilComplete: Tick;
+
+  private cost: number;
+
+  constructor(
+    private ownerId: PlayerID,
+    private tile: TileRef,
+    private constructionType: UnitType,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    this.mg = mg;
+    if (!mg.hasPlayer(this.ownerId)) {
+      console.warn(`ConstructionExecution: owner ${this.ownerId} not found`);
+      this.active = false;
+      return;
+    }
+    this.player = mg.player(this.ownerId);
+  }
+
+  tick(ticks: number): void {
+    if (this.construction == null) {
+      const info = this.mg.unitInfo(this.constructionType);
+      if (info.constructionDuration == null) {
+        this.completeConstruction();
+        this.active = false;
+        return;
+      }
+      const spawnTile = this.player.canBuild(this.constructionType, this.tile);
+      if (spawnTile == false) {
+        consolex.warn(`cannot build ${this.constructionType}`);
+        this.active = false;
+        return;
+      }
+      this.construction = this.player.buildUnit(
+        UnitType.Construction,
+        spawnTile,
+        {},
+      );
+      this.cost = this.mg.unitInfo(this.constructionType).cost(this.player);
+      this.player.removeGold(this.cost);
+      this.construction.setConstructionType(this.constructionType);
+      this.ticksUntilComplete = info.constructionDuration;
+      return;
+    }
+
+    if (!this.construction.isActive()) {
+      this.active = false;
+      return;
+    }
+
+    if (this.player != this.construction.owner()) {
+      this.player = this.construction.owner();
+    }
+
+    if (this.ticksUntilComplete == 0) {
+      this.player = this.construction.owner();
+      this.construction.delete(false);
+      // refund the cost so player has the gold to build the unit
+      this.player.addGold(this.cost);
+      this.completeConstruction();
+      this.active = false;
+      return;
+    }
+    this.ticksUntilComplete--;
+  }
+
+  private completeConstruction() {
+    const player = this.player;
+    switch (this.constructionType) {
+      case UnitType.AtomBomb:
+      case UnitType.HydrogenBomb:
+        this.mg.addExecution(
+          new NukeExecution(this.constructionType, player.id(), this.tile),
+        );
+        break;
+      case UnitType.MIRV:
+        this.mg.addExecution(new MirvExecution(player.id(), this.tile));
+        break;
+      case UnitType.Warship:
+        this.mg.addExecution(new WarshipExecution(player.id(), this.tile));
+        break;
+      case UnitType.Port:
+        this.mg.addExecution(new PortExecution(player.id(), this.tile));
+        break;
+      case UnitType.MissileSilo:
+        this.mg.addExecution(new MissileSiloExecution(player.id(), this.tile));
+        break;
+      case UnitType.DefensePost:
+        this.mg.addExecution(new DefensePostExecution(player.id(), this.tile));
+        break;
+      case UnitType.SAMLauncher:
+        this.mg.addExecution(new SAMLauncherExecution(player.id(), this.tile));
+        break;
+      case UnitType.City:
+        this.mg.addExecution(new CityExecution(player.id(), this.tile));
+        break;
+      default:
+        throw Error(`unit type ${this.constructionType} not supported`);
+    }
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="DefensePostExecution.ts">
+import { consolex } from "../Consolex";
+import {
+  Execution,
+  Game,
+  Player,
+  PlayerID,
+  Unit,
+  UnitType,
+} from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { ShellExecution } from "./ShellExecution";
+
+export class DefensePostExecution implements Execution {
+  private player: Player;
+  private mg: Game;
+  private post: Unit;
+  private active: boolean = true;
+
+  private target: Unit = null;
+  private lastShellAttack = 0;
+
+  private alreadySentShell = new Set<Unit>();
+
+  constructor(
+    private ownerId: PlayerID,
+    private tile: TileRef,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    this.mg = mg;
+    if (!mg.hasPlayer(this.ownerId)) {
+      console.warn(`DefensePostExectuion: owner ${this.ownerId} not found`);
+      this.active = false;
+      return;
+    }
+    this.player = mg.player(this.ownerId);
+  }
+
+  private shoot() {
+    const shellAttackRate = this.mg.config().defensePostShellAttackRate();
+    if (this.mg.ticks() - this.lastShellAttack > shellAttackRate) {
+      this.lastShellAttack = this.mg.ticks();
+      this.mg.addExecution(
+        new ShellExecution(
+          this.post.tile(),
+          this.post.owner(),
+          this.post,
+          this.target,
+        ),
+      );
+      if (!this.target.hasHealth()) {
+        // Don't send multiple shells to target that can be oneshotted
+        this.alreadySentShell.add(this.target);
+        this.target = null;
+        return;
+      }
+    }
+  }
+
+  tick(ticks: number): void {
+    if (this.post == null) {
+      const spawnTile = this.player.canBuild(UnitType.DefensePost, this.tile);
+      if (spawnTile == false) {
+        consolex.warn("cannot build Defense Post");
+        this.active = false;
+        return;
+      }
+      this.post = this.player.buildUnit(UnitType.DefensePost, spawnTile, {});
+    }
+    if (!this.post.isActive()) {
+      this.active = false;
+      return;
+    }
+
+    if (this.player != this.post.owner()) {
+      this.player = this.post.owner();
+    }
+
+    if (this.target != null && !this.target.isActive()) {
+      this.target = null;
+    }
+
+    // TODO: Reconsider how/if defense posts target ships.
+    return;
+
+    const ships = this.mg
+      .nearbyUnits(
+        this.post.tile(),
+        this.mg.config().defensePostTargettingRange(),
+        [UnitType.TransportShip, UnitType.Warship],
+      )
+      .filter(
+        ({ unit }) =>
+          unit.owner() !== this.post.owner() &&
+          !unit.owner().isFriendly(this.post.owner()) &&
+          !this.alreadySentShell.has(unit),
+      );
+
+    this.target =
+      ships.sort((a, b) => {
+        const { unit: unitA, distSquared: distA } = a;
+        const { unit: unitB, distSquared: distB } = b;
+
+        // Prioritize TransportShip
+        if (
+          unitA.type() === UnitType.TransportShip &&
+          unitB.type() !== UnitType.TransportShip
+        )
+          return -1;
+        if (
+          unitA.type() !== UnitType.TransportShip &&
+          unitB.type() === UnitType.TransportShip
+        )
+          return 1;
+
+        // If both are the same type, sort by distance (lower `distSquared` means closer)
+        return distA - distB;
+      })[0]?.unit ?? null;
+
+    if (this.target == null || !this.target.isActive()) {
+      this.target = null;
+      return;
+    } else {
+      this.shoot();
+      return;
+    }
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="DonateGoldExecution.ts">
+import { consolex } from "../Consolex";
+import { Execution, Game, Player, PlayerID } from "../game/Game";
+
+export class DonateGoldExecution implements Execution {
+  private sender: Player;
+  private recipient: Player;
+
+  private active = true;
+
+  constructor(
+    private senderID: PlayerID,
+    private recipientID: PlayerID,
+    private gold: number | null,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this.senderID)) {
+      console.warn(`DonateExecution: sender ${this.senderID} not found`);
+      this.active = false;
+      return;
+    }
+    if (!mg.hasPlayer(this.recipientID)) {
+      console.warn(`DonateExecution recipient ${this.recipientID} not found`);
+      this.active = false;
+      return;
+    }
+
+    this.sender = mg.player(this.senderID);
+    this.recipient = mg.player(this.recipientID);
+    if (this.gold == null) {
+      this.gold = Math.round(this.sender.gold() / 3);
+    }
+  }
+
+  tick(ticks: number): void {
+    if (this.sender.canDonate(this.recipient)) {
+      this.sender.donateGold(this.recipient, this.gold);
+      this.recipient.updateRelation(this.sender, 50);
+    } else {
+      consolex.warn(
+        `cannot send gold from ${this.sender.name()} to ${this.recipient.name()}`,
+      );
+    }
+    this.active = false;
+  }
+
+  owner(): Player {
+    return null;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="DonateTroopExecution.ts">
+import { consolex } from "../Consolex";
+import { Execution, Game, Player, PlayerID } from "../game/Game";
+
+export class DonateTroopsExecution implements Execution {
+  private sender: Player;
+  private recipient: Player;
+
+  private active = true;
+
+  constructor(
+    private senderID: PlayerID,
+    private recipientID: PlayerID,
+    private troops: number | null,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this.senderID)) {
+      console.warn(`DonateExecution: sender ${this.senderID} not found`);
+      this.active = false;
+      return;
+    }
+    if (!mg.hasPlayer(this.recipientID)) {
+      console.warn(`DonateExecution recipient ${this.recipientID} not found`);
+      this.active = false;
+      return;
+    }
+
+    this.sender = mg.player(this.senderID);
+    this.recipient = mg.player(this.recipientID);
+    if (this.troops == null) {
+      this.troops = mg.config().defaultDonationAmount(this.sender);
+    }
+  }
+
+  tick(ticks: number): void {
+    if (this.sender.canDonate(this.recipient)) {
+      this.sender.donateTroops(this.recipient, this.troops);
+      this.recipient.updateRelation(this.sender, 50);
+    } else {
+      consolex.warn(
+        `cannot send tropps from ${this.sender} to ${this.recipient}`,
+      );
+    }
+    this.active = false;
+  }
+
+  owner(): Player {
+    return null;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="EmbargoExecution.ts">
+import { Execution, Game, Player, PlayerID } from "../game/Game";
+
+export class EmbargoExecution implements Execution {
+  private active = true;
+
+  constructor(
+    private player: Player,
+    private targetID: PlayerID,
+    private readonly action: "start" | "stop",
+  ) {}
+
+  init(mg: Game, _: number): void {
+    if (!mg.hasPlayer(this.player.id())) {
+      console.warn(`EmbargoExecution: sender ${this.player.id()} not found`);
+      this.active = false;
+      return;
+    }
+    if (!mg.hasPlayer(this.targetID)) {
+      console.warn(`EmbargoExecution recipient ${this.targetID} not found`);
+      this.active = false;
+      return;
+    }
+  }
+
+  tick(_: number): void {
+    if (this.action == "start") this.player.addEmbargo(this.targetID);
+    else this.player.stopEmbargo(this.targetID);
+
+    this.active = false;
+  }
+
+  owner(): Player {
+    return null;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="EmojiExecution.ts">
+import { consolex } from "../Consolex";
+import {
+  AllPlayers,
+  Execution,
+  Game,
+  Player,
+  PlayerID,
+  PlayerType,
+} from "../game/Game";
+import { flattenedEmojiTable } from "../Util";
+
+export class EmojiExecution implements Execution {
+  private requestor: Player;
+  private recipient: Player | typeof AllPlayers;
+
+  private active = true;
+
+  constructor(
+    private senderID: PlayerID,
+    private recipientID: PlayerID | typeof AllPlayers,
+    private emoji: number,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this.senderID)) {
+      console.warn(`EmojiExecution: sender ${this.senderID} not found`);
+      this.active = false;
+      return;
+    }
+    if (this.recipientID != AllPlayers && !mg.hasPlayer(this.recipientID)) {
+      console.warn(`EmojiExecution: recipient ${this.recipientID} not found`);
+      this.active = false;
+      return;
+    }
+
+    this.requestor = mg.player(this.senderID);
+    this.recipient =
+      this.recipientID == AllPlayers ? AllPlayers : mg.player(this.recipientID);
+  }
+
+  tick(ticks: number): void {
+    const emojiString = flattenedEmojiTable.at(this.emoji);
+
+    if (this.requestor.canSendEmoji(this.recipient)) {
+      this.requestor.sendEmoji(this.recipient, emojiString);
+      if (
+        emojiString == "🖕" &&
+        this.recipient != AllPlayers &&
+        this.recipient.type() == PlayerType.FakeHuman
+      ) {
+        this.recipient.updateRelation(this.requestor, -100);
+      }
+    } else {
+      consolex.warn(
+        `cannot send emoji from ${this.requestor} to ${this.recipient}`,
+      );
+    }
+    this.active = false;
+  }
+
+  owner(): Player {
+    return null;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="ExecutionManager.ts">
+import { Execution, Game } from "../game/Game";
+import { PseudoRandom } from "../PseudoRandom";
+import { ClientID, GameID, Intent, Turn } from "../Schemas";
+import { simpleHash } from "../Util";
+import { AllianceRequestExecution } from "./alliance/AllianceRequestExecution";
+import { AllianceRequestReplyExecution } from "./alliance/AllianceRequestReplyExecution";
+import { BreakAllianceExecution } from "./alliance/BreakAllianceExecution";
+import { AttackExecution } from "./AttackExecution";
+import { BotSpawner } from "./BotSpawner";
+import { ConstructionExecution } from "./ConstructionExecution";
+import { DonateGoldExecution } from "./DonateGoldExecution";
+import { DonateTroopsExecution } from "./DonateTroopExecution";
+import { EmbargoExecution } from "./EmbargoExecution";
+import { EmojiExecution } from "./EmojiExecution";
+import { FakeHumanExecution } from "./FakeHumanExecution";
+import { MoveWarshipExecution } from "./MoveWarshipExecution";
+import { NoOpExecution } from "./NoOpExecution";
+import { QuickChatExecution } from "./QuickChatExecution";
+import { RetreatExecution } from "./RetreatExecution";
+import { SetTargetTroopRatioExecution } from "./SetTargetTroopRatioExecution";
+import { SpawnExecution } from "./SpawnExecution";
+import { TargetPlayerExecution } from "./TargetPlayerExecution";
+import { TransportShipExecution } from "./TransportShipExecution";
+
+export class Executor {
+  // private random = new PseudoRandom(999)
+  private random: PseudoRandom = null;
+
+  constructor(
+    private mg: Game,
+    private gameID: GameID,
+    private clientID: ClientID,
+  ) {
+    // Add one to avoid id collisions with bots.
+    this.random = new PseudoRandom(simpleHash(gameID) + 1);
+  }
+
+  createExecs(turn: Turn): Execution[] {
+    return turn.intents.map((i) => this.createExec(i));
+  }
+
+  createExec(intent: Intent): Execution {
+    const player = this.mg.playerByClientID(intent.clientID);
+    if (!player) {
+      console.warn(`player with clientID ${intent.clientID} not found`);
+      return new NoOpExecution();
+    }
+    const playerID = player.id();
+
+    switch (intent.type) {
+      case "attack": {
+        return new AttackExecution(
+          intent.troops,
+          playerID,
+          intent.targetID,
+          null,
+        );
+      }
+      case "cancel_attack":
+        return new RetreatExecution(playerID, intent.attackID);
+      case "move_warship":
+        return new MoveWarshipExecution(intent.unitId, intent.tile);
+      case "spawn":
+        return new SpawnExecution(
+          player.info(),
+          this.mg.ref(intent.x, intent.y),
+        );
+      case "boat":
+        let src = null;
+        if (intent.srcX != null || intent.srcY != null) {
+          src = this.mg.ref(intent.srcX, intent.srcY);
+        }
+        return new TransportShipExecution(
+          playerID,
+          intent.targetID,
+          this.mg.ref(intent.dstX, intent.dstY),
+          intent.troops,
+          src,
+        );
+      case "allianceRequest":
+        return new AllianceRequestExecution(playerID, intent.recipient);
+      case "allianceRequestReply":
+        return new AllianceRequestReplyExecution(
+          intent.requestor,
+          playerID,
+          intent.accept,
+        );
+      case "breakAlliance":
+        return new BreakAllianceExecution(playerID, intent.recipient);
+      case "targetPlayer":
+        return new TargetPlayerExecution(playerID, intent.target);
+      case "emoji":
+        return new EmojiExecution(playerID, intent.recipient, intent.emoji);
+      case "donate_troops":
+        return new DonateTroopsExecution(
+          playerID,
+          intent.recipient,
+          intent.troops,
+        );
+      case "donate_gold":
+        return new DonateGoldExecution(playerID, intent.recipient, intent.gold);
+      case "troop_ratio":
+        return new SetTargetTroopRatioExecution(playerID, intent.ratio);
+      case "embargo":
+        return new EmbargoExecution(player, intent.targetID, intent.action);
+      case "build_unit":
+        return new ConstructionExecution(
+          playerID,
+          this.mg.ref(intent.x, intent.y),
+          intent.unit,
+        );
+      case "quick_chat":
+        return new QuickChatExecution(
+          playerID,
+          intent.recipient,
+          intent.quickChatKey,
+          intent.variables ?? {},
+        );
+      default:
+        throw new Error(`intent type ${intent} not found`);
+    }
+  }
+
+  spawnBots(numBots: number): Execution[] {
+    return new BotSpawner(this.mg, this.gameID).spawnBots(numBots);
+  }
+
+  fakeHumanExecutions(): Execution[] {
+    const execs = [];
+    for (const nation of this.mg.nations()) {
+      execs.push(new FakeHumanExecution(this.gameID, nation));
+    }
+    return execs;
+  }
+}
+</file>
+
+<file path="FakeHumanExecution.ts">
+import { consolex } from "../Consolex";
+import {
+  Cell,
+  Difficulty,
+  Execution,
+  Game,
+  Nation,
+  Player,
+  PlayerID,
+  PlayerType,
+  Relation,
+  TerrainType,
+  Tick,
+  Unit,
+  UnitType,
+} from "../game/Game";
+import { euclDistFN, manhattanDistFN, TileRef } from "../game/GameMap";
+import { PseudoRandom } from "../PseudoRandom";
+import { GameID } from "../Schemas";
+import { calculateBoundingBox, flattenedEmojiTable, simpleHash } from "../Util";
+import { ConstructionExecution } from "./ConstructionExecution";
+import { EmojiExecution } from "./EmojiExecution";
+import { NukeExecution } from "./NukeExecution";
+import { SpawnExecution } from "./SpawnExecution";
+import { TransportShipExecution } from "./TransportShipExecution";
+import { closestTwoTiles } from "./Util";
+import { BotBehavior } from "./utils/BotBehavior";
+
+export class FakeHumanExecution implements Execution {
+  private firstMove = true;
+
+  private active = true;
+  private random: PseudoRandom;
+  private behavior: BotBehavior | null = null;
+  private mg: Game;
+  private player: Player = null;
+
+  private attackRate: number;
+  private attackTick: number;
+  private triggerRatio: number;
+  private reserveRatio: number;
+
+  private lastEmojiSent = new Map<Player, Tick>();
+  private lastNukeSent: [Tick, TileRef][] = [];
+  private embargoMalusApplied = new Set<PlayerID>();
+  private heckleEmoji: number[];
+
+  constructor(
+    gameID: GameID,
+    private nation: Nation,
+  ) {
+    this.random = new PseudoRandom(
+      simpleHash(nation.playerInfo.id) + simpleHash(gameID),
+    );
+    this.attackRate = this.random.nextInt(40, 80);
+    this.attackTick = this.random.nextInt(0, this.attackRate);
+    this.triggerRatio = this.random.nextInt(60, 90) / 100;
+    this.reserveRatio = this.random.nextInt(30, 60) / 100;
+    this.heckleEmoji = ["🤡", "😡"].map((e) => flattenedEmojiTable.indexOf(e));
+  }
+
+  init(mg: Game) {
+    this.mg = mg;
+    if (this.random.chance(10)) {
+      // this.isTraitor = true
+    }
+  }
+
+  private updateRelationsFromEmbargos() {
+    const others = this.mg.players().filter((p) => p.id() != this.player.id());
+
+    others.forEach((other: Player) => {
+      const embargoMalus = -20;
+      if (
+        other.hasEmbargoAgainst(this.player) &&
+        !this.embargoMalusApplied.has(other.id())
+      ) {
+        this.player.updateRelation(other, embargoMalus);
+        this.embargoMalusApplied.add(other.id());
+      } else if (
+        !other.hasEmbargoAgainst(this.player) &&
+        this.embargoMalusApplied.has(other.id())
+      ) {
+        this.player.updateRelation(other, -embargoMalus);
+        this.embargoMalusApplied.delete(other.id());
+      }
+    });
+  }
+
+  private handleEmbargoesToHostileNations() {
+    const others = this.mg.players().filter((p) => p.id() != this.player.id());
+
+    others.forEach((other: Player) => {
+      /* When player is hostile starts embargo. Do not stop until neutral again */
+      if (
+        this.player.relation(other) <= Relation.Hostile &&
+        !this.player.hasEmbargoAgainst(other)
+      ) {
+        this.player.addEmbargo(other.id());
+      } else if (
+        this.player.relation(other) >= Relation.Neutral &&
+        this.player.hasEmbargoAgainst(other)
+      ) {
+        this.player.stopEmbargo(other.id());
+      }
+    });
+  }
+
+  tick(ticks: number) {
+    if (ticks % this.attackRate != this.attackTick) return;
+
+    if (this.mg.inSpawnPhase()) {
+      const rl = this.randomLand();
+      if (rl == null) {
+        consolex.warn(`cannot spawn ${this.nation.playerInfo.name}`);
+        return;
+      }
+      this.mg.addExecution(new SpawnExecution(this.nation.playerInfo, rl));
+      return;
+    }
+
+    if (this.player == null) {
+      this.player = this.mg
+        .players()
+        .find((p) => p.id() == this.nation.playerInfo.id);
+      if (this.player == null) {
+        return;
+      }
+    }
+
+    if (!this.player.isAlive()) {
+      this.active = false;
+      return;
+    }
+
+    if (this.behavior === null) {
+      // Player is unavailable during init()
+      this.behavior = new BotBehavior(
+        this.random,
+        this.mg,
+        this.player,
+        this.triggerRatio,
+        this.reserveRatio,
+      );
+    }
+
+    if (this.firstMove) {
+      this.firstMove = false;
+      this.behavior.sendAttack(this.mg.terraNullius());
+      return;
+    }
+
+    if (
+      this.player.troops() > 100_000 &&
+      this.player.targetTroopRatio() > 0.7
+    ) {
+      this.player.setTargetTroopRatio(0.7);
+    }
+
+    this.updateRelationsFromEmbargos();
+    this.behavior.handleAllianceRequests();
+    this.handleEnemies();
+    this.handleUnits();
+    this.handleEmbargoesToHostileNations();
+    this.maybeAttack();
+  }
+
+  private maybeAttack() {
+    const enemyborder = Array.from(this.player.borderTiles())
+      .flatMap((t) => this.mg.neighbors(t))
+      .filter(
+        (t) => this.mg.isLand(t) && this.mg.ownerID(t) != this.player.smallID(),
+      );
+
+    if (enemyborder.length == 0) {
+      if (this.random.chance(10)) {
+        this.sendBoatRandomly();
+      }
+      return;
+    }
+    if (this.random.chance(20)) {
+      this.sendBoatRandomly();
+      return;
+    }
+
+    const enemiesWithTN = enemyborder.map((t) =>
+      this.mg.playerBySmallID(this.mg.ownerID(t)),
+    );
+    if (enemiesWithTN.filter((o) => !o.isPlayer()).length > 0) {
+      this.behavior.sendAttack(this.mg.terraNullius());
+      return;
+    }
+
+    const enemies = enemiesWithTN
+      .filter((o) => o.isPlayer())
+      .sort((a, b) => a.troops() - b.troops());
+
+    // 5% chance to send a random alliance request
+    if (this.random.chance(20)) {
+      const toAlly = this.random.randElement(enemies);
+      if (this.player.canSendAllianceRequest(toAlly)) {
+        this.player.createAllianceRequest(toAlly);
+        return;
+      }
+    }
+
+    // 50-50 attack weakest player vs random player
+    const toAttack = this.random.chance(2)
+      ? enemies[0]
+      : this.random.randElement(enemies);
+    if (this.shouldAttack(toAttack)) {
+      this.behavior.sendAttack(toAttack);
+    }
+  }
+
+  private shouldAttack(other: Player): boolean {
+    if (this.player.isOnSameTeam(other)) {
+      return false;
+    }
+    if (this.player.isFriendly(other)) {
+      if (this.shouldDiscourageAttack(other)) {
+        return this.random.chance(200);
+      }
+      return this.random.chance(50);
+    } else {
+      if (this.shouldDiscourageAttack(other)) {
+        return this.random.chance(4);
+      }
+      return true;
+    }
+  }
+
+  private shouldDiscourageAttack(other: Player) {
+    if (other.isTraitor()) {
+      return false;
+    }
+    const difficulty = this.mg.config().gameConfig().difficulty;
+    if (difficulty == Difficulty.Hard || difficulty == Difficulty.Impossible) {
+      return false;
+    }
+    if (other.type() != PlayerType.Human) {
+      return false;
+    }
+    // Only discourage attacks on Humans who are not traitors on easy or medium difficulty.
+    return true;
+  }
+
+  handleEnemies() {
+    this.behavior.forgetOldEnemies();
+    this.behavior.checkIncomingAttacks();
+    this.behavior.assistAllies();
+    const enemy = this.behavior.selectEnemy();
+    if (!enemy) return;
+    this.maybeSendEmoji(enemy);
+    this.maybeSendNuke(enemy);
+    if (this.player.sharesBorderWith(enemy)) {
+      this.behavior.sendAttack(enemy);
+    } else {
+      this.maybeSendBoatAttack(enemy);
+    }
+  }
+
+  private maybeSendEmoji(enemy: Player) {
+    if (enemy.type() != PlayerType.Human) return;
+    const lastSent = this.lastEmojiSent.get(enemy) ?? -300;
+    if (this.mg.ticks() - lastSent <= 300) return;
+    this.lastEmojiSent.set(enemy, this.mg.ticks());
+    this.mg.addExecution(
+      new EmojiExecution(
+        this.player.id(),
+        enemy.id(),
+        this.random.randElement(this.heckleEmoji),
+      ),
+    );
+  }
+
+  private maybeSendNuke(other: Player) {
+    const silos = this.player.units(UnitType.MissileSilo);
+    if (
+      silos.length == 0 ||
+      this.player.gold() < this.cost(UnitType.AtomBomb) ||
+      other.type() == PlayerType.Bot ||
+      this.player.isOnSameTeam(other)
+    ) {
+      return;
+    }
+
+    const structures = other.units(
+      UnitType.City,
+      UnitType.DefensePost,
+      UnitType.MissileSilo,
+      UnitType.Port,
+      UnitType.SAMLauncher,
+    );
+    const structureTiles = structures.map((u) => u.tile());
+    const randomTiles: TileRef[] = new Array(10);
+    for (let i = 0; i < randomTiles.length; i++) {
+      randomTiles[i] = this.randTerritoryTile(other);
+    }
+    const allTiles = randomTiles.concat(structureTiles);
+
+    let bestTile = null;
+    let bestValue = 0;
+    this.removeOldNukeEvents();
+    outer: for (const tile of new Set(allTiles)) {
+      if (tile == null) continue;
+      for (const t of this.mg.bfs(tile, manhattanDistFN(tile, 15))) {
+        // Make sure we nuke at least 15 tiles in border
+        if (this.mg.owner(t) != other) {
+          continue outer;
+        }
+      }
+      if (!this.player.canBuild(UnitType.AtomBomb, tile)) continue;
+      const value = this.nukeTileScore(tile, silos, structures);
+      if (value > bestTile) {
+        bestTile = tile;
+        bestValue = value;
+      }
+    }
+    if (bestTile != null) {
+      this.sendNuke(bestTile);
+    }
+  }
+
+  private removeOldNukeEvents() {
+    const maxAge = 500;
+    const tick = this.mg.ticks();
+    while (
+      this.lastNukeSent.length > 0 &&
+      this.lastNukeSent[0][0] + maxAge < tick
+    ) {
+      this.lastNukeSent.shift();
+    }
+  }
+
+  private sendNuke(tile: TileRef) {
+    const tick = this.mg.ticks();
+    this.lastNukeSent.push([tick, tile]);
+    this.mg.addExecution(
+      new NukeExecution(UnitType.AtomBomb, this.player.id(), tile),
+    );
+  }
+
+  private nukeTileScore(tile: TileRef, silos: Unit[], targets: Unit[]): number {
+    // Potential damage in a 25-tile radius
+    const dist = euclDistFN(tile, 25, false);
+    let tileValue = targets
+      .filter((unit) => dist(this.mg, unit.tile()))
+      .map((unit) => {
+        switch (unit.type()) {
+          case UnitType.City:
+            return 25_000;
+          case UnitType.DefensePost:
+            return 5_000;
+          case UnitType.MissileSilo:
+            return 50_000;
+          case UnitType.Port:
+            return 10_000;
+          case UnitType.SAMLauncher:
+            return 5_000;
+          default:
+            return 0;
+        }
+      })
+      .reduce((prev, cur) => prev + cur, 0);
+
+    // Prefer tiles that are closer to a silo
+    const siloTiles = silos.map((u) => u.tile());
+    const { x: closestSilo } = closestTwoTiles(this.mg, siloTiles, [tile]);
+    const distanceSquared = this.mg.euclideanDistSquared(tile, closestSilo);
+    const distanceToClosestSilo = Math.sqrt(distanceSquared);
+    tileValue -= distanceToClosestSilo * 30;
+
+    // Don't target near recent targets
+    tileValue -= this.lastNukeSent
+      .filter(([_tick, tile]) => dist(this.mg, tile))
+      .map((_) => 1_000_000)
+      .reduce((prev, cur) => prev + cur, 0);
+
+    return tileValue;
+  }
+
+  private maybeSendBoatAttack(other: Player) {
+    if (this.player.isOnSameTeam(other)) return;
+    const closest = closestTwoTiles(
+      this.mg,
+      Array.from(this.player.borderTiles()).filter((t) =>
+        this.mg.isOceanShore(t),
+      ),
+      Array.from(other.borderTiles()).filter((t) => this.mg.isOceanShore(t)),
+    );
+    if (closest == null) {
+      return;
+    }
+    this.mg.addExecution(
+      new TransportShipExecution(
+        this.player.id(),
+        other.id(),
+        closest.y,
+        this.player.troops() / 5,
+        null,
+      ),
+    );
+  }
+
+  private handleUnits() {
+    const ports = this.player.units(UnitType.Port);
+    if (ports.length == 0 && this.player.gold() > this.cost(UnitType.Port)) {
+      const oceanTiles = Array.from(this.player.borderTiles()).filter((t) =>
+        this.mg.isOceanShore(t),
+      );
+      if (oceanTiles.length > 0) {
+        const buildTile = this.random.randElement(oceanTiles);
+        this.mg.addExecution(
+          new ConstructionExecution(this.player.id(), buildTile, UnitType.Port),
+        );
+      }
+      return;
+    }
+    this.maybeSpawnStructure(UnitType.City, 2);
+    if (this.maybeSpawnWarship()) {
+      return;
+    }
+    this.maybeSpawnStructure(UnitType.MissileSilo, 1);
+  }
+
+  private maybeSpawnStructure(type: UnitType, maxNum: number) {
+    const units = this.player.units(type);
+    if (units.length >= maxNum) {
+      return;
+    }
+    if (this.player.gold() < this.cost(type)) {
+      return;
+    }
+    const tile = this.randTerritoryTile(this.player);
+    if (tile == null) {
+      return;
+    }
+    const canBuild = this.player.canBuild(type, tile);
+    if (canBuild == false) {
+      return;
+    }
+    this.mg.addExecution(
+      new ConstructionExecution(this.player.id(), tile, type),
+    );
+  }
+
+  private maybeSpawnWarship(): boolean {
+    if (!this.random.chance(50)) {
+      return false;
+    }
+    const ports = this.player.units(UnitType.Port);
+    const ships = this.player.units(UnitType.Warship);
+    if (
+      ports.length > 0 &&
+      ships.length == 0 &&
+      this.player.gold() > this.cost(UnitType.Warship)
+    ) {
+      const port = this.random.randElement(ports);
+      const targetTile = this.warshipSpawnTile(port.tile());
+      if (targetTile == null) {
+        return false;
+      }
+      const canBuild = this.player.canBuild(UnitType.Warship, targetTile);
+      if (canBuild == false) {
+        consolex.warn("cannot spawn destroyer");
+        return false;
+      }
+      this.mg.addExecution(
+        new ConstructionExecution(
+          this.player.id(),
+          targetTile,
+          UnitType.Warship,
+        ),
+      );
+      return true;
+    }
+    return false;
+  }
+
+  private randTerritoryTile(p: Player): TileRef | null {
+    const boundingBox = calculateBoundingBox(this.mg, p.borderTiles());
+    for (let i = 0; i < 100; i++) {
+      const randX = this.random.nextInt(boundingBox.min.x, boundingBox.max.x);
+      const randY = this.random.nextInt(boundingBox.min.y, boundingBox.max.y);
+      if (!this.mg.isOnMap(new Cell(randX, randY))) {
+        // Sanity check should never happen
+        continue;
+      }
+      const randTile = this.mg.ref(randX, randY);
+      if (this.mg.owner(randTile) == p) {
+        return randTile;
+      }
+    }
+    return null;
+  }
+
+  private warshipSpawnTile(portTile: TileRef): TileRef | null {
+    const radius = 250;
+    for (let attempts = 0; attempts < 50; attempts++) {
+      const randX = this.random.nextInt(
+        this.mg.x(portTile) - radius,
+        this.mg.x(portTile) + radius,
+      );
+      const randY = this.random.nextInt(
+        this.mg.y(portTile) - radius,
+        this.mg.y(portTile) + radius,
+      );
+      if (!this.mg.isValidCoord(randX, randY)) {
+        continue;
+      }
+      const tile = this.mg.ref(randX, randY);
+      // Sanity check
+      if (!this.mg.isOcean(tile)) {
+        continue;
+      }
+      return tile;
+    }
+    return null;
+  }
+
+  private cost(type: UnitType): number {
+    return this.mg.unitInfo(type).cost(this.player);
+  }
+
+  sendBoatRandomly() {
+    const oceanShore = Array.from(this.player.borderTiles()).filter((t) =>
+      this.mg.isOceanShore(t),
+    );
+    if (oceanShore.length == 0) {
+      return;
+    }
+
+    const src = this.random.randElement(oceanShore);
+
+    const dst = this.randOceanShoreTile(src, 150);
+    if (dst == null) {
+      return;
+    }
+
+    this.mg.addExecution(
+      new TransportShipExecution(
+        this.player.id(),
+        this.mg.owner(dst).id(),
+        dst,
+        this.player.troops() / 5,
+        null,
+      ),
+    );
+    return;
+  }
+
+  randomLand(): TileRef | null {
+    const delta = 25;
+    let tries = 0;
+    while (tries < 50) {
+      tries++;
+      const cell = this.nation.spawnCell;
+      const x = this.random.nextInt(cell.x - delta, cell.x + delta);
+      const y = this.random.nextInt(cell.y - delta, cell.y + delta);
+      if (!this.mg.isValidCoord(x, y)) {
+        continue;
+      }
+      const tile = this.mg.ref(x, y);
+      if (this.mg.isLand(tile) && !this.mg.hasOwner(tile)) {
+        if (
+          this.mg.terrainType(tile) == TerrainType.Mountain &&
+          this.random.chance(2)
+        ) {
+          continue;
+        }
+        return tile;
+      }
+    }
+    return null;
+  }
+
+  private randOceanShoreTile(tile: TileRef, dist: number): TileRef | null {
+    const x = this.mg.x(tile);
+    const y = this.mg.y(tile);
+    for (let i = 0; i < 500; i++) {
+      const randX = this.random.nextInt(x - dist, x + dist);
+      const randY = this.random.nextInt(y - dist, y + dist);
+      if (!this.mg.isValidCoord(randX, randY)) {
+        continue;
+      }
+      const randTile = this.mg.ref(randX, randY);
+      if (!this.mg.isOceanShore(randTile)) {
+        continue;
+      }
+      const owner = this.mg.owner(randTile);
+      if (!owner.isPlayer()) {
+        return randTile;
+      }
+      if (!owner.isFriendly(this.player)) {
+        return randTile;
+      }
+    }
+    return null;
+  }
+
+  owner(): Player {
+    return null;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return true;
+  }
+}
+</file>
+
+<file path="MIRVExecution.ts">
+import { consolex } from "../Consolex";
+import {
+  Execution,
+  Game,
+  MessageType,
+  Player,
+  PlayerID,
+  TerraNullius,
+  Unit,
+  UnitType,
+} from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { AirPathFinder } from "../pathfinding/PathFinding";
+import { PseudoRandom } from "../PseudoRandom";
+import { simpleHash } from "../Util";
+import { NukeExecution } from "./NukeExecution";
+
+export class MirvExecution implements Execution {
+  private player: Player;
+
+  private active = true;
+
+  private mg: Game;
+
+  private nuke: Unit;
+
+  private mirvRange = 1500;
+  private warheadCount = 350;
+
+  private random: PseudoRandom;
+
+  private pathFinder: AirPathFinder;
+
+  private targetPlayer: Player | TerraNullius;
+
+  private separateDst: TileRef;
+
+  constructor(
+    private senderID: PlayerID,
+    private dst: TileRef,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this.senderID)) {
+      console.warn(`MIRVExecution: player ${this.senderID} not found`);
+      this.active = false;
+      return;
+    }
+
+    this.random = new PseudoRandom(mg.ticks() + simpleHash(this.senderID));
+    this.mg = mg;
+    this.pathFinder = new AirPathFinder(mg, this.random);
+    this.player = mg.player(this.senderID);
+    this.targetPlayer = this.mg.owner(this.dst);
+
+    this.mg
+      .stats()
+      .increaseNukeCount(
+        this.player.id(),
+        this.targetPlayer.id(),
+        UnitType.MIRV,
+      );
+  }
+
+  tick(ticks: number): void {
+    if (this.nuke == null) {
+      const spawn = this.player.canBuild(UnitType.MIRV, this.dst);
+      if (spawn == false) {
+        consolex.warn(`cannot build MIRV`);
+        this.active = false;
+        return;
+      }
+      this.nuke = this.player.buildUnit(UnitType.MIRV, spawn, {});
+      const x = Math.floor(
+        (this.mg.x(this.dst) + this.mg.x(this.mg.x(this.nuke.tile()))) / 2,
+      );
+      const y = Math.max(0, this.mg.y(this.dst) - 500) + 50;
+      this.separateDst = this.mg.ref(x, y);
+
+      this.mg.displayMessage(
+        `⚠️⚠️⚠️ ${this.player.name()} - MIRV INBOUND ⚠️⚠️⚠️`,
+        MessageType.ERROR,
+        this.targetPlayer.id(),
+      );
+    }
+
+    for (let i = 0; i < 4; i++) {
+      const result = this.pathFinder.nextTile(
+        this.nuke.tile(),
+        this.separateDst,
+      );
+      if (result === true) {
+        this.separate();
+        this.active = false;
+        return;
+      } else {
+        this.nuke.move(result);
+      }
+    }
+  }
+
+  private separate() {
+    const dsts: TileRef[] = [this.dst];
+    let attempts = 1000;
+    while (attempts > 0 && dsts.length < this.warheadCount) {
+      attempts--;
+      const potential = this.randomLand(this.dst, dsts);
+      if (potential == null) {
+        continue;
+      }
+      dsts.push(potential);
+    }
+    console.log(`dsts: ${dsts.length}`);
+    dsts.sort(
+      (a, b) =>
+        this.mg.manhattanDist(b, this.dst) - this.mg.manhattanDist(a, this.dst),
+    );
+    console.log(`got ${dsts.length} dsts!!`);
+
+    for (const [i, dst] of dsts.entries()) {
+      this.mg.addExecution(
+        new NukeExecution(
+          UnitType.MIRVWarhead,
+          this.senderID,
+          dst,
+          this.nuke.tile(),
+          15 + Math.floor((i / this.warheadCount) * 5),
+          //   this.random.nextInt(5, 9),
+          this.random.nextInt(0, 15),
+        ),
+      );
+    }
+    if (this.targetPlayer.isPlayer()) {
+      const alliance = this.player.allianceWith(this.targetPlayer);
+      if (alliance != null) {
+        this.player.breakAlliance(alliance);
+      }
+      if (this.targetPlayer != this.player) {
+        this.targetPlayer.updateRelation(this.player, -100);
+      }
+    }
+    this.nuke.delete(false);
+  }
+
+  randomLand(ref: TileRef, taken: TileRef[]): TileRef | null {
+    let tries = 0;
+    const mirvRange2 = this.mirvRange * this.mirvRange;
+    while (tries < 100) {
+      tries++;
+      const x = this.random.nextInt(
+        this.mg.x(ref) - this.mirvRange,
+        this.mg.x(ref) + this.mirvRange,
+      );
+      const y = this.random.nextInt(
+        this.mg.y(ref) - this.mirvRange,
+        this.mg.y(ref) + this.mirvRange,
+      );
+      if (!this.mg.isValidCoord(x, y)) {
+        continue;
+      }
+      const tile = this.mg.ref(x, y);
+      if (!this.mg.isLand(tile)) {
+        continue;
+      }
+      if (this.mg.euclideanDistSquared(tile, ref) > mirvRange2) {
+        continue;
+      }
+      if (this.mg.owner(tile) != this.targetPlayer) {
+        continue;
+      }
+      for (const t of taken) {
+        if (this.mg.manhattanDist(tile, t) < 25) {
+          continue;
+        }
+      }
+      return tile;
+    }
+    console.log("couldn't find place, giving up");
+    return null;
+  }
+
+  owner(): Player {
+    return this.player;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="MissileSiloExecution.ts">
+import { consolex } from "../Consolex";
+import {
+  Execution,
+  Game,
+  Player,
+  PlayerID,
+  Unit,
+  UnitType,
+} from "../game/Game";
+import { TileRef } from "../game/GameMap";
+
+export class MissileSiloExecution implements Execution {
+  private active = true;
+  private mg: Game;
+  private player: Player;
+  private silo: Unit;
+
+  constructor(
+    private _owner: PlayerID,
+    private tile: TileRef,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this._owner)) {
+      console.warn(`MissileSiloExecution: owner ${this._owner} not found`);
+      this.active = false;
+      return;
+    }
+
+    this.mg = mg;
+    this.player = mg.player(this._owner);
+  }
+
+  tick(ticks: number): void {
+    if (this.silo == null) {
+      const spawn = this.player.canBuild(UnitType.MissileSilo, this.tile);
+      if (spawn === false) {
+        consolex.warn(
+          `player ${this.player} cannot build missile silo at ${this.tile}`,
+        );
+        this.active = false;
+        return;
+      }
+      this.silo = this.player.buildUnit(UnitType.MissileSilo, spawn, {
+        cooldownDuration: this.mg.config().SiloCooldown(),
+      });
+
+      if (this.player != this.silo.owner()) {
+        this.player = this.silo.owner();
+      }
+    }
+
+    if (
+      this.silo.isCooldown() &&
+      this.silo.ticksLeftInCooldown(this.mg.config().SiloCooldown()) == 0
+    ) {
+      this.silo.setCooldown(false);
+    }
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="MoveWarshipExecution.ts">
+import { Execution, Game } from "../game/Game";
+
+const cancelDelay = 2;
+
+export class MoveWarshipExecution implements Execution {
+  private active = true;
+  private mg: Game;
+
+  constructor(
+    public readonly unitId: number,
+    public readonly position: number,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    this.mg = mg;
+  }
+
+  tick(ticks: number): void {
+    const warship = this.mg.units().find((u) => u.id() == this.unitId);
+    if (!warship) {
+      console.log("MoveWarshipExecution: warship is already dead");
+      return;
+    }
+    warship.setMoveTarget(this.position);
+    this.active = false;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="NoOpExecution.ts">
+import { Execution, Game, Player } from "../game/Game";
+
+export class NoOpExecution implements Execution {
+  isActive(): boolean {
+    return false;
+  }
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+  init(mg: Game, ticks: number): void {}
+  tick(ticks: number): void {}
+  owner(): Player {
+    return null;
+  }
+}
+</file>
+
+<file path="NukeExecution.ts">
+import { consolex } from "../Consolex";
+import {
+  Execution,
+  Game,
+  MessageType,
+  NukeType,
+  Player,
+  PlayerID,
+  TerraNullius,
+  Unit,
+  UnitType,
+} from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { AirPathFinder } from "../pathfinding/PathFinding";
+import { PseudoRandom } from "../PseudoRandom";
+
+export class NukeExecution implements Execution {
+  private player: Player;
+  private active = true;
+  private mg: Game;
+  private nuke: Unit;
+
+  private random: PseudoRandom;
+  private pathFinder: AirPathFinder;
+
+  constructor(
+    private type: NukeType,
+    private senderID: PlayerID,
+    private dst: TileRef,
+    private src?: TileRef,
+    private speed: number = -1,
+    private waitTicks = 0,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this.senderID)) {
+      console.warn(`NukeExecution: sender ${this.senderID} not found`);
+      this.active = false;
+      return;
+    }
+
+    this.mg = mg;
+    this.player = mg.player(this.senderID);
+    this.random = new PseudoRandom(ticks);
+    if (this.speed == -1) {
+      this.speed = this.mg.config().defaultNukeSpeed();
+    }
+    this.pathFinder = new AirPathFinder(mg, this.random);
+  }
+
+  public target(): Player | TerraNullius {
+    return this.mg.owner(this.dst);
+  }
+
+  private tilesToDestroy(): Set<TileRef> {
+    const magnitude = this.mg.config().nukeMagnitudes(this.nuke.type());
+    const rand = new PseudoRandom(this.mg.ticks());
+    const inner2 = magnitude.inner * magnitude.inner;
+    const outer2 = magnitude.outer * magnitude.outer;
+    return this.mg.bfs(this.dst, (_, n: TileRef) => {
+      const d2 = this.mg.euclideanDistSquared(this.dst, n);
+      return d2 <= outer2 && (d2 <= inner2 || rand.chance(2));
+    });
+  }
+
+  private breakAlliances(toDestroy: Set<TileRef>) {
+    const attacked = new Map<Player, number>();
+    for (const tile of toDestroy) {
+      const owner = this.mg.owner(tile);
+      if (owner.isPlayer()) {
+        const prev = attacked.get(owner) ?? 0;
+        attacked.set(owner, prev + 1);
+      }
+    }
+
+    for (const [other, tilesDestroyed] of attacked) {
+      if (tilesDestroyed > 100 && this.nuke.type() != UnitType.MIRVWarhead) {
+        // Mirv warheads shouldn't break alliances
+        const alliance = this.player.allianceWith(other);
+        if (alliance != null) {
+          this.player.breakAlliance(alliance);
+        }
+        if (other != this.player) {
+          other.updateRelation(this.player, -100);
+        }
+      }
+    }
+  }
+
+  tick(ticks: number): void {
+    if (this.nuke == null) {
+      const spawn = this.src ?? this.player.canBuild(this.type, this.dst);
+      if (spawn == false) {
+        consolex.warn(`cannot build Nuke`);
+        this.active = false;
+        return;
+      }
+      this.nuke = this.player.buildUnit(this.type, spawn, {
+        detonationDst: this.dst,
+      });
+      if (this.mg.hasOwner(this.dst)) {
+        const target = this.mg.owner(this.dst) as Player;
+        if (this.type == UnitType.AtomBomb) {
+          this.mg.displayMessage(
+            `${this.player.name()} - atom bomb inbound`,
+            MessageType.ERROR,
+            target.id(),
+          );
+        }
+        if (this.type == UnitType.HydrogenBomb) {
+          this.mg.displayMessage(
+            `${this.player.name()} - hydrogen bomb inbound`,
+            MessageType.ERROR,
+            target.id(),
+          );
+        }
+
+        this.mg
+          .stats()
+          .increaseNukeCount(
+            this.senderID,
+            target.id(),
+            this.nuke.type() as NukeType,
+          );
+      }
+
+      // after sending an nuke set the missilesilo on cooldown
+      const silo = this.player
+        .units(UnitType.MissileSilo)
+        .find((silo) => silo.tile() === spawn);
+      if (silo) {
+        silo.setCooldown(true);
+      }
+      return;
+    }
+
+    // make the nuke unactive if it was intercepted
+    if (!this.nuke.isActive()) {
+      consolex.log(`Nuke destroyed before reaching target`);
+      this.active = false;
+      return;
+    }
+
+    if (this.waitTicks > 0) {
+      this.waitTicks--;
+      return;
+    }
+
+    for (let i = 0; i < this.speed; i++) {
+      // Move to next tile
+      const nextTile = this.pathFinder.nextTile(this.nuke.tile(), this.dst);
+      if (nextTile === true) {
+        this.detonate();
+        return;
+      } else {
+        this.nuke.move(nextTile);
+      }
+    }
+  }
+
+  private detonate() {
+    const magnitude = this.mg.config().nukeMagnitudes(this.nuke.type());
+    const toDestroy = this.tilesToDestroy();
+    this.breakAlliances(toDestroy);
+
+    for (const tile of toDestroy) {
+      const owner = this.mg.owner(tile);
+      if (owner.isPlayer()) {
+        owner.relinquish(tile);
+        owner.removeTroops(
+          this.mg
+            .config()
+            .nukeDeathFactor(owner.troops(), owner.numTilesOwned()),
+        );
+        owner.removeWorkers(
+          this.mg
+            .config()
+            .nukeDeathFactor(owner.workers(), owner.numTilesOwned()),
+        );
+        owner.outgoingAttacks().forEach((attack) => {
+          const deaths = this.mg
+            .config()
+            .nukeDeathFactor(attack.troops(), owner.numTilesOwned());
+          attack.setTroops(attack.troops() - deaths);
+        });
+        owner.units(UnitType.TransportShip).forEach((attack) => {
+          const deaths = this.mg
+            .config()
+            .nukeDeathFactor(attack.troops(), owner.numTilesOwned());
+          attack.setTroops(attack.troops() - deaths);
+        });
+      }
+
+      if (this.mg.isLand(tile)) {
+        this.mg.setFallout(tile, true);
+      }
+    }
+
+    const outer2 = magnitude.outer * magnitude.outer;
+    for (const unit of this.mg.units()) {
+      if (
+        unit.type() != UnitType.AtomBomb &&
+        unit.type() != UnitType.HydrogenBomb &&
+        unit.type() != UnitType.MIRVWarhead &&
+        unit.type() != UnitType.MIRV
+      ) {
+        if (this.mg.euclideanDistSquared(this.dst, unit.tile()) < outer2) {
+          unit.delete();
+        }
+      }
+    }
+    this.active = false;
+    this.nuke.delete(false);
+  }
+
+  owner(): Player {
+    return this.player;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="PlayerExecution.ts">
+import { renderNumber } from "../../client/Utils";
+import { Config } from "../configuration/Config";
+import { consolex } from "../Consolex";
+import {
+  Execution,
+  Game,
+  MessageType,
+  Player,
+  PlayerID,
+  UnitType,
+} from "../game/Game";
+import { GameImpl } from "../game/GameImpl";
+import { TileRef } from "../game/GameMap";
+import { calculateBoundingBox, getMode, inscribed, simpleHash } from "../Util";
+
+export class PlayerExecution implements Execution {
+  private readonly ticksPerClusterCalc = 20;
+
+  private player: Player;
+  private config: Config;
+  private lastCalc = 0;
+  private mg: Game;
+  private active = true;
+
+  constructor(private playerID: PlayerID) {}
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+
+  init(mg: Game, ticks: number) {
+    if (!mg.hasPlayer(this.playerID)) {
+      console.warn(`PlayerExecution: player ${this.playerID} not found`);
+      this.active = false;
+      return;
+    }
+    this.mg = mg;
+    this.config = mg.config();
+    this.player = mg.player(this.playerID);
+    this.lastCalc =
+      ticks + (simpleHash(this.player.name()) % this.ticksPerClusterCalc);
+  }
+
+  tick(ticks: number) {
+    this.player.decayRelations();
+    const hasPort = this.player.units(UnitType.Port).length > 0;
+    this.player.units().forEach((u) => {
+      if (u.health() <= 0) {
+        u.delete();
+        return;
+      }
+      if (hasPort && u.type() == UnitType.Warship) {
+        u.modifyHealth(1);
+      }
+      const tileOwner = this.mg.owner(u.tile());
+      if (u.info().territoryBound) {
+        if (tileOwner.isPlayer()) {
+          if (tileOwner != this.player) {
+            this.mg.player(tileOwner.id()).captureUnit(u);
+          }
+        } else {
+          u.delete();
+        }
+      }
+    });
+
+    if (!this.player.isAlive()) {
+      this.player.units().forEach((u) => {
+        if (
+          u.type() != UnitType.AtomBomb &&
+          u.type() != UnitType.HydrogenBomb &&
+          u.type() != UnitType.MIRVWarhead &&
+          u.type() != UnitType.MIRV
+        ) {
+          u.delete();
+        }
+      });
+      this.active = false;
+      return;
+    }
+
+    const popInc = this.config.populationIncreaseRate(this.player);
+    this.player.addWorkers(popInc * (1 - this.player.targetTroopRatio()));
+    this.player.addTroops(popInc * this.player.targetTroopRatio());
+    this.player.addGold(this.config.goldAdditionRate(this.player));
+    const adjustRate = this.config.troopAdjustmentRate(this.player);
+    this.player.addTroops(adjustRate);
+    this.player.removeWorkers(adjustRate);
+
+    const alliances = Array.from(this.player.alliances());
+    for (const alliance of alliances) {
+      if (
+        this.mg.ticks() - alliance.createdAt() >
+        this.mg.config().allianceDuration()
+      ) {
+        alliance.expire();
+      }
+    }
+
+    if (ticks - this.lastCalc > this.ticksPerClusterCalc) {
+      if (this.player.lastTileChange() > this.lastCalc) {
+        this.lastCalc = ticks;
+        const start = performance.now();
+        this.removeClusters();
+        const end = performance.now();
+        if (end - start > 1000) {
+          consolex.log(`player ${this.player.name()}, took ${end - start}ms`);
+        }
+      }
+    }
+  }
+
+  private removeClusters() {
+    const clusters = this.calculateClusters();
+    clusters.sort((a, b) => b.size - a.size);
+
+    const main = clusters.shift();
+    this.player.largestClusterBoundingBox = calculateBoundingBox(this.mg, main);
+    const surroundedBy = this.surroundedBySamePlayer(main);
+    if (surroundedBy && !this.player.isFriendly(surroundedBy)) {
+      this.removeCluster(main);
+    }
+
+    for (const cluster of clusters) {
+      if (this.isSurrounded(cluster)) {
+        this.removeCluster(cluster);
+      }
+    }
+  }
+
+  private surroundedBySamePlayer(cluster: Set<TileRef>): false | Player {
+    const enemies = new Set<number>();
+    for (const tile of cluster) {
+      const isOceanShore = this.mg.isOceanShore(tile);
+      if (this.mg.isOceanShore(tile) && !isOceanShore) {
+        continue;
+      }
+      if (
+        isOceanShore ||
+        this.mg.isOnEdgeOfMap(tile) ||
+        this.mg.neighbors(tile).some((n) => !this.mg.hasOwner(n))
+      ) {
+        return false;
+      }
+      this.mg
+        .neighbors(tile)
+        .filter((n) => this.mg.ownerID(n) != this.player.smallID())
+        .forEach((p) => enemies.add(this.mg.ownerID(p)));
+      if (enemies.size != 1) {
+        return false;
+      }
+    }
+    if (enemies.size != 1) {
+      return false;
+    }
+    const enemy = this.mg.playerBySmallID(Array.from(enemies)[0]) as Player;
+    const enemyBox = calculateBoundingBox(this.mg, enemy.borderTiles());
+    const clusterBox = calculateBoundingBox(this.mg, cluster);
+    if (inscribed(enemyBox, clusterBox)) {
+      return enemy;
+    }
+    return false;
+  }
+
+  private isSurrounded(cluster: Set<TileRef>): boolean {
+    const enemyTiles = new Set<TileRef>();
+    for (const tr of cluster) {
+      if (this.mg.isShore(tr) || this.mg.isOnEdgeOfMap(tr)) {
+        return false;
+      }
+      this.mg
+        .neighbors(tr)
+        .filter((n) => this.mg.ownerID(n) != this.player.smallID())
+        .forEach((n) => enemyTiles.add(n));
+    }
+    if (enemyTiles.size == 0) {
+      return false;
+    }
+    const enemyBox = calculateBoundingBox(this.mg, enemyTiles);
+    const clusterBox = calculateBoundingBox(this.mg, cluster);
+    return inscribed(enemyBox, clusterBox);
+  }
+
+  private removeCluster(cluster: Set<TileRef>) {
+    if (
+      Array.from(cluster).some(
+        (t) => this.mg.ownerID(t) != this.player.smallID(),
+      )
+    ) {
+      // Other removeCluster operations could change tile owners,
+      // so double check.
+      return;
+    }
+
+    const capturing = this.getCapturingPlayer(cluster);
+    if (capturing == null) {
+      return;
+    }
+
+    const firstTile = cluster.values().next().value;
+    const filter = (_, t: TileRef): boolean =>
+      this.mg.ownerID(t) == this.player.smallID();
+    const tiles = this.mg.bfs(firstTile, filter);
+
+    if (this.player.numTilesOwned() == tiles.size) {
+      const gold = this.player.gold();
+      this.mg.displayMessage(
+        `Conquered ${this.player.displayName()} received ${renderNumber(
+          gold,
+        )} gold`,
+        MessageType.SUCCESS,
+        capturing.id(),
+      );
+      capturing.addGold(gold);
+      this.player.removeGold(gold);
+    }
+
+    for (const tile of tiles) {
+      capturing.conquer(tile);
+    }
+  }
+
+  private getCapturingPlayer(cluster: Set<TileRef>): Player | null {
+    const neighborsIDs = new Set<number>();
+    for (const t of cluster) {
+      for (const neighbor of this.mg.neighbors(t)) {
+        if (this.mg.ownerID(neighbor) != this.player.smallID()) {
+          neighborsIDs.add(this.mg.ownerID(neighbor));
+        }
+      }
+    }
+
+    let largestNeighborAttack: Player | null = null;
+    let largestTroopCount: number = 0;
+    for (const id of neighborsIDs) {
+      const neighbor = this.mg.playerBySmallID(id);
+      if (!neighbor.isPlayer()) {
+        continue;
+      }
+      for (const attack of neighbor.outgoingAttacks()) {
+        if (attack.target() == this.player) {
+          if (attack.troops() > largestTroopCount) {
+            largestTroopCount = attack.troops();
+            largestNeighborAttack = neighbor;
+          }
+        }
+      }
+    }
+    if (largestNeighborAttack != null) {
+      return largestNeighborAttack;
+    }
+
+    // fall back to getting mode if no attacks
+    const mode = getMode(neighborsIDs);
+    if (!this.mg.playerBySmallID(mode).isPlayer()) {
+      return null;
+    }
+    const capturing = this.mg.playerBySmallID(mode);
+    if (!capturing.isPlayer()) {
+      return null;
+    }
+    return capturing as Player;
+  }
+
+  private calculateClusters(): Set<TileRef>[] {
+    const seen = new Set<TileRef>();
+    const border = this.player.borderTiles();
+    const clusters: Set<TileRef>[] = [];
+    for (const tile of border) {
+      if (seen.has(tile)) {
+        continue;
+      }
+
+      const cluster = new Set<TileRef>();
+      const queue: TileRef[] = [tile];
+      seen.add(tile);
+      while (queue.length > 0) {
+        const curr = queue.shift();
+        cluster.add(curr);
+
+        const neighbors = (this.mg as GameImpl).neighborsWithDiag(curr);
+        for (const neighbor of neighbors) {
+          if (border.has(neighbor) && !seen.has(neighbor)) {
+            queue.push(neighbor);
+            seen.add(neighbor);
+          }
+        }
+      }
+      clusters.push(cluster);
+    }
+    return clusters;
+  }
+
+  owner(): Player {
+    return this.player;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+}
+</file>
+
+<file path="PortExecution.ts">
+import { consolex } from "../Consolex";
+import {
+  Execution,
+  Game,
+  Player,
+  PlayerID,
+  Unit,
+  UnitType,
+} from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { PathFinder } from "../pathfinding/PathFinding";
+import { PseudoRandom } from "../PseudoRandom";
+import { TradeShipExecution } from "./TradeShipExecution";
+
+export class PortExecution implements Execution {
+  private active = true;
+  private mg: Game;
+  private port: Unit;
+  private random: PseudoRandom;
+  private checkOffset: number;
+
+  constructor(
+    private _owner: PlayerID,
+    private tile: TileRef,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this._owner)) {
+      console.warn(`PortExecution: player ${this._owner} not found`);
+      this.active = false;
+      return;
+    }
+    this.mg = mg;
+    this.random = new PseudoRandom(mg.ticks());
+    this.checkOffset = mg.ticks() % 10;
+  }
+
+  tick(ticks: number): void {
+    if (this.port == null) {
+      const tile = this.tile;
+      const player = this.mg.player(this._owner);
+      const spawn = player.canBuild(UnitType.Port, tile);
+      if (spawn === false) {
+        consolex.warn(`player ${player} cannot build port at ${this.tile}`);
+        this.active = false;
+        return;
+      }
+      this.port = player.buildUnit(UnitType.Port, spawn, {});
+    }
+
+    if (!this.port.isActive()) {
+      this.active = false;
+      return;
+    }
+
+    if (this._owner != this.port.owner().id()) {
+      this._owner = this.port.owner().id();
+    }
+
+    // Only check every 10 ticks for performance.
+    if ((this.mg.ticks() + this.checkOffset) % 10 != 0) {
+      return;
+    }
+
+    const totalNbOfPorts = this.mg.units(UnitType.Port).length;
+    if (
+      !this.random.chance(this.mg.config().tradeShipSpawnRate(totalNbOfPorts))
+    ) {
+      return;
+    }
+
+    const ports = this.player().tradingPorts(this.port);
+
+    if (ports.length == 0) {
+      return;
+    }
+
+    const port = this.random.randElement(ports);
+    const pf = PathFinder.Mini(this.mg, 2500);
+    this.mg.addExecution(
+      new TradeShipExecution(this.player().id(), this.port, port, pf),
+    );
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+
+  player(): Player {
+    return this.port.owner();
+  }
+}
+</file>
+
+<file path="QuickChatExecution.ts">
+import { consolex } from "../Consolex";
+import { Execution, Game, Player, PlayerID } from "../game/Game";
+
+export class QuickChatExecution implements Execution {
+  private sender: Player;
+  private recipient: Player;
+  private mg: Game;
+
+  private active = true;
+
+  constructor(
+    private senderID: PlayerID,
+    private recipientID: PlayerID,
+    private quickChatKey: string,
+    private variables: Record<string, string>,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    this.mg = mg;
+    if (!mg.hasPlayer(this.senderID)) {
+      consolex.warn(`QuickChatExecution: sender ${this.senderID} not found`);
+      this.active = false;
+      return;
+    }
+    if (!mg.hasPlayer(this.recipientID)) {
+      consolex.warn(
+        `QuickChatExecution: recipient ${this.recipientID} not found`,
+      );
+      this.active = false;
+      return;
+    }
+
+    this.sender = mg.player(this.senderID);
+    this.recipient = mg.player(this.recipientID);
+  }
+
+  tick(ticks: number): void {
+    const message = this.getMessageFromKey(this.quickChatKey, this.variables);
+
+    this.mg.displayChat(
+      message[1],
+      message[0],
+      this.variables,
+      this.recipient.id(),
+      true,
+      this.recipient.name(),
+    );
+
+    this.mg.displayChat(
+      message[1],
+      message[0],
+      this.variables,
+      this.sender.id(),
+      false,
+      this.recipient.name(),
+    );
+
+    consolex.log(
+      `[QuickChat] ${this.sender.name} → ${this.recipient.name}: ${message}`,
+    );
+
+    this.active = false;
+  }
+
+  owner(): Player {
+    return this.sender;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+
+  private getMessageFromKey(
+    fullKey: string,
+    vars: Record<string, string>,
+  ): string[] {
+    const translated = fullKey.split(".");
+    return translated;
+  }
+}
+</file>
+
+<file path="RetreatExecution.ts">
+import { Execution, Game, Player, PlayerID } from "../game/Game";
+
+const cancelDelay = 20;
+
+export class RetreatExecution implements Execution {
+  private active = true;
+  private retreatOrdered = false;
+  private player: Player;
+  private startTick: number;
+  private mg: Game;
+  constructor(
+    private playerID: PlayerID,
+    private attackID: string,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this.playerID)) {
+      console.warn(`RetreatExecution: player ${this.player.id()} not found`);
+      return;
+    }
+    this.mg = mg;
+
+    this.player = mg.player(this.playerID);
+    this.startTick = mg.ticks();
+  }
+
+  tick(ticks: number): void {
+    if (!this.retreatOrdered) {
+      this.player.orderRetreat(this.attackID);
+      this.retreatOrdered = true;
+    }
+
+    if (this.mg.ticks() >= this.startTick + cancelDelay) {
+      this.player.executeRetreat(this.attackID);
+      this.active = false;
+    }
+  }
+
+  owner(): Player {
+    return this.player;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="SAMLauncherExecution.ts">
+import { consolex } from "../Consolex";
+import {
+  Execution,
+  Game,
+  MessageType,
+  Player,
+  PlayerID,
+  Unit,
+  UnitType,
+} from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { PseudoRandom } from "../PseudoRandom";
+import { SAMMissileExecution } from "./SAMMissileExecution";
+
+export class SAMLauncherExecution implements Execution {
+  private player: Player;
+  private mg: Game;
+  private active: boolean = true;
+
+  private searchRangeRadius = 80;
+  // As MIRV go very fast we have to detect them very early but we only
+  // shoot the one targeting very close (MIRVWarheadProtectionRadius)
+  private MIRVWarheadSearchRadius = 400;
+  private MIRVWarheadProtectionRadius = 50;
+
+  private pseudoRandom: PseudoRandom;
+
+  constructor(
+    private ownerId: PlayerID,
+    private tile: TileRef,
+    private sam: Unit | null = null,
+  ) {
+    if (sam != null) {
+      this.tile = sam.tile();
+    }
+  }
+
+  init(mg: Game, ticks: number): void {
+    this.mg = mg;
+    if (!mg.hasPlayer(this.ownerId)) {
+      console.warn(`SAMLauncherExecution: owner ${this.ownerId} not found`);
+      this.active = false;
+      return;
+    }
+    this.player = mg.player(this.ownerId);
+  }
+
+  private getSingleTarget(): Unit | null {
+    const nukes = this.mg
+      .nearbyUnits(this.sam.tile(), this.searchRangeRadius, [
+        UnitType.AtomBomb,
+        UnitType.HydrogenBomb,
+      ])
+      .filter(
+        ({ unit }) =>
+          unit.owner() !== this.player && !this.player.isFriendly(unit.owner()),
+      );
+
+    return (
+      nukes.sort((a, b) => {
+        const { unit: unitA, distSquared: distA } = a;
+        const { unit: unitB, distSquared: distB } = b;
+
+        // Prioritize Hydrogen Bombs
+        if (
+          unitA.type() === UnitType.HydrogenBomb &&
+          unitB.type() !== UnitType.HydrogenBomb
+        )
+          return -1;
+        if (
+          unitA.type() !== UnitType.HydrogenBomb &&
+          unitB.type() === UnitType.HydrogenBomb
+        )
+          return 1;
+
+        // If both are the same type, sort by distance (lower `distSquared` means closer)
+        return distA - distB;
+      })[0]?.unit ?? null
+    );
+  }
+
+  private isHit(type: UnitType, random: number): boolean {
+    if (type == UnitType.AtomBomb) {
+      return true;
+    }
+
+    if (type == UnitType.MIRVWarhead) {
+      return random < this.mg.config().samWarheadHittingChance();
+    }
+
+    return random < this.mg.config().samHittingChance();
+  }
+
+  tick(ticks: number): void {
+    if (this.sam == null) {
+      const spawnTile = this.player.canBuild(UnitType.SAMLauncher, this.tile);
+      if (spawnTile == false) {
+        consolex.warn("cannot build SAM Launcher");
+        this.active = false;
+        return;
+      }
+      this.sam = this.player.buildUnit(UnitType.SAMLauncher, spawnTile, {
+        cooldownDuration: this.mg.config().SAMCooldown(),
+      });
+    }
+    if (!this.sam.isActive()) {
+      this.active = false;
+      return;
+    }
+
+    if (this.player != this.sam.owner()) {
+      this.player = this.sam.owner();
+    }
+
+    if (!this.pseudoRandom) {
+      this.pseudoRandom = new PseudoRandom(this.sam.id());
+    }
+
+    const mirvWarheadTargets = this.mg
+      .nearbyUnits(
+        this.sam.tile(),
+        this.MIRVWarheadSearchRadius,
+        UnitType.MIRVWarhead,
+      )
+      .map(({ unit }) => unit)
+      .filter(
+        (unit) =>
+          unit.owner() !== this.player && !this.player.isFriendly(unit.owner()),
+      )
+      .filter(
+        (unit) =>
+          this.mg.manhattanDist(unit.detonationDst(), this.sam.tile()) <
+          this.MIRVWarheadProtectionRadius,
+      );
+
+    let target: Unit | null = null;
+    if (mirvWarheadTargets.length == 0) {
+      target = this.getSingleTarget();
+    }
+
+    if (
+      this.sam.isCooldown() &&
+      this.sam.ticksLeftInCooldown(this.mg.config().SAMCooldown()) == 0
+    ) {
+      this.sam.setCooldown(false);
+    }
+
+    const isSingleTarget = target && !target.targetedBySAM();
+    if (
+      (isSingleTarget || mirvWarheadTargets.length > 0) &&
+      !this.sam.isCooldown()
+    ) {
+      this.sam.setCooldown(true);
+      const type =
+        mirvWarheadTargets.length > 0 ? UnitType.MIRVWarhead : target.type();
+      const random = this.pseudoRandom.next();
+      const hit = this.isHit(type, random);
+      if (!hit) {
+        this.mg.displayMessage(
+          `Missile failed to intercept ${type}`,
+          MessageType.ERROR,
+          this.sam.owner().id(),
+        );
+      } else {
+        if (mirvWarheadTargets.length > 0) {
+          // Message
+          this.mg.displayMessage(
+            `${mirvWarheadTargets.length} MIRV warheads intercepted`,
+            MessageType.SUCCESS,
+            this.sam.owner().id(),
+          );
+          // Delete warheads
+          mirvWarheadTargets.forEach((u) => u.delete());
+        } else {
+          target.setTargetedBySAM(true);
+          this.mg.addExecution(
+            new SAMMissileExecution(
+              this.sam.tile(),
+              this.sam.owner(),
+              this.sam,
+              target,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="SAMMissileExecution.ts">
+import {
+  Execution,
+  Game,
+  MessageType,
+  Player,
+  Unit,
+  UnitType,
+} from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { AirPathFinder } from "../pathfinding/PathFinding";
+import { PseudoRandom } from "../PseudoRandom";
+
+export class SAMMissileExecution implements Execution {
+  private active = true;
+  private pathFinder: AirPathFinder;
+  private SAMMissile: Unit;
+  private mg: Game;
+
+  constructor(
+    private spawn: TileRef,
+    private _owner: Player,
+    private ownerUnit: Unit,
+    private target: Unit,
+    private speed: number = 12,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    this.pathFinder = new AirPathFinder(mg, new PseudoRandom(mg.ticks()));
+    this.mg = mg;
+  }
+
+  tick(ticks: number): void {
+    if (this.SAMMissile == null) {
+      this.SAMMissile = this._owner.buildUnit(
+        UnitType.SAMMissile,
+        this.spawn,
+        {},
+      );
+    }
+    if (!this.SAMMissile.isActive()) {
+      this.active = false;
+      return;
+    }
+    // Mirv warheads are too fast, and mirv shouldn't be stopped ever
+    const nukesWhitelist = [UnitType.AtomBomb, UnitType.HydrogenBomb];
+    if (
+      !this.target.isActive() ||
+      !this.ownerUnit.isActive() ||
+      this.target.owner() == this.SAMMissile.owner() ||
+      !nukesWhitelist.includes(this.target.type())
+    ) {
+      this.SAMMissile.delete(false);
+      this.active = false;
+      return;
+    }
+    for (let i = 0; i < this.speed; i++) {
+      const result = this.pathFinder.nextTile(
+        this.SAMMissile.tile(),
+        this.target.tile(),
+      );
+      if (result === true) {
+        this.mg.displayMessage(
+          `Missile intercepted ${this.target.type()}`,
+          MessageType.SUCCESS,
+          this._owner.id(),
+        );
+        this.active = false;
+        this.target.delete();
+        this.SAMMissile.delete(false);
+        return;
+      } else {
+        this.SAMMissile.move(result);
+      }
+    }
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="SetTargetTroopRatioExecution.ts">
+import { consolex } from "../Consolex";
+import { Execution, Game, Player, PlayerID } from "../game/Game";
+
+export class SetTargetTroopRatioExecution implements Execution {
+  private player: Player;
+
+  private active = true;
+
+  constructor(
+    private playerID: PlayerID,
+    private targetTroopsRatio: number,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this.playerID)) {
+      console.warn(
+        `SetTargetTRoopRatioExecution: player ${this.playerID} not found`,
+      );
+    }
+    this.player = mg.player(this.playerID);
+  }
+
+  tick(ticks: number): void {
+    if (this.targetTroopsRatio < 0 || this.targetTroopsRatio > 1) {
+      consolex.warn(
+        `target troop ratio of ${this.targetTroopsRatio} for player ${this.player} invalid`,
+      );
+    } else {
+      this.player.setTargetTroopRatio(this.targetTroopsRatio);
+    }
+    this.active = false;
+  }
+
+  owner(): Player {
+    return null;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="ShellExecution.ts">
+import { Execution, Game, Player, Unit, UnitType } from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { AirPathFinder } from "../pathfinding/PathFinding";
+import { PseudoRandom } from "../PseudoRandom";
+
+export class ShellExecution implements Execution {
+  private active = true;
+  private pathFinder: AirPathFinder;
+  private shell: Unit;
+  private mg: Game;
+  private destroyAtTick: number = -1;
+
+  constructor(
+    private spawn: TileRef,
+    private _owner: Player,
+    private ownerUnit: Unit,
+    private target: Unit,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    this.pathFinder = new AirPathFinder(mg, new PseudoRandom(mg.ticks()));
+    this.mg = mg;
+  }
+
+  tick(ticks: number): void {
+    if (this.shell == null) {
+      this.shell = this._owner.buildUnit(UnitType.Shell, this.spawn, {});
+    }
+    if (!this.shell.isActive()) {
+      this.active = false;
+      return;
+    }
+    if (
+      !this.target.isActive() ||
+      this.target.owner() == this.shell.owner() ||
+      (this.destroyAtTick != -1 && this.mg.ticks() >= this.destroyAtTick)
+    ) {
+      this.shell.delete(false);
+      this.active = false;
+      return;
+    }
+
+    if (this.destroyAtTick == -1 && !this.ownerUnit.isActive()) {
+      this.destroyAtTick = this.mg.ticks() + this.mg.config().shellLifetime();
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const result = this.pathFinder.nextTile(
+        this.shell.tile(),
+        this.target.tile(),
+      );
+      if (result === true) {
+        this.active = false;
+        this.target.modifyHealth(-this.effectOnTarget());
+        this.shell.delete(false);
+        return;
+      } else {
+        this.shell.move(result);
+      }
+    }
+  }
+
+  private effectOnTarget(): number {
+    const baseDamage: number = this.mg.config().unitInfo(UnitType.Shell).damage;
+    return baseDamage;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="SpawnExecution.ts">
+import { Execution, Game, Player, PlayerInfo, PlayerType } from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { BotExecution } from "./BotExecution";
+import { PlayerExecution } from "./PlayerExecution";
+import { getSpawnTiles } from "./Util";
+
+export class SpawnExecution implements Execution {
+  active: boolean = true;
+  private mg: Game;
+
+  constructor(
+    private playerInfo: PlayerInfo,
+    public readonly tile: TileRef,
+  ) {}
+
+  init(mg: Game, ticks: number) {
+    this.mg = mg;
+  }
+
+  tick(ticks: number) {
+    this.active = false;
+
+    if (!this.mg.inSpawnPhase()) {
+      this.active = false;
+      return;
+    }
+
+    let player: Player = null;
+    if (this.mg.hasPlayer(this.playerInfo.id)) {
+      player = this.mg.player(this.playerInfo.id);
+    } else {
+      player = this.mg.addPlayer(this.playerInfo);
+    }
+
+    player.tiles().forEach((t) => player.relinquish(t));
+    getSpawnTiles(this.mg, this.tile).forEach((t) => {
+      player.conquer(t);
+    });
+
+    if (!player.hasSpawned()) {
+      this.mg.addExecution(new PlayerExecution(player.id()));
+      if (player.type() == PlayerType.Bot) {
+        this.mg.addExecution(new BotExecution(player));
+      }
+    }
+    player.setHasSpawned(true);
+  }
+
+  owner(): Player {
+    return null;
+  }
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return true;
+  }
+}
+</file>
+
+<file path="TargetPlayerExecution.ts">
+import { Execution, Game, Player, PlayerID } from "../game/Game";
+
+export class TargetPlayerExecution implements Execution {
+  private requestor: Player;
+  private target: Player;
+
+  private active = true;
+
+  constructor(
+    private requestorID: PlayerID,
+    private targetID: PlayerID,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this.requestorID)) {
+      console.warn(
+        `TargetPlayerExecution: requestor ${this.requestorID} not found`,
+      );
+      this.active = false;
+      return;
+    }
+    if (!mg.hasPlayer(this.targetID)) {
+      console.warn(`TargetPlayerExecution: target ${this.targetID} not found`);
+      this.active = false;
+      return;
+    }
+
+    this.requestor = mg.player(this.requestorID);
+    this.target = mg.player(this.targetID);
+  }
+
+  tick(ticks: number): void {
+    if (this.requestor.canTarget(this.target)) {
+      this.requestor.target(this.target);
+      this.target.updateRelation(this.requestor, -40);
+    }
+    this.active = false;
+  }
+
+  owner(): Player {
+    return null;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+<file path="TradeShipExecution.ts">
+import { renderNumber } from "../../client/Utils";
+import { consolex } from "../Consolex";
+import {
+  Execution,
+  Game,
+  MessageType,
+  Player,
+  PlayerID,
+  Unit,
+  UnitType,
+} from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { PathFindResultType } from "../pathfinding/AStar";
+import { PathFinder } from "../pathfinding/PathFinding";
+import { distSortUnit } from "../Util";
+
+export class TradeShipExecution implements Execution {
+  private active = true;
+  private mg: Game;
+  private origOwner: Player;
+  private tradeShip: Unit;
+  private index = 0;
+  private wasCaptured = false;
+
+  constructor(
+    private _owner: PlayerID,
+    private srcPort: Unit,
+    private _dstPort: Unit,
+    private pathFinder: PathFinder,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    this.mg = mg;
+    this.origOwner = mg.player(this._owner);
+  }
+
+  tick(ticks: number): void {
+    if (this.tradeShip == null) {
+      const spawn = this.origOwner.canBuild(
+        UnitType.TradeShip,
+        this.srcPort.tile(),
+      );
+      if (spawn == false) {
+        consolex.warn(`cannot build trade ship`);
+        this.active = false;
+        return;
+      }
+      this.tradeShip = this.origOwner.buildUnit(UnitType.TradeShip, spawn, {
+        dstPort: this._dstPort,
+        lastSetSafeFromPirates: ticks,
+      });
+    }
+
+    if (!this.tradeShip.isActive()) {
+      this.active = false;
+      return;
+    }
+
+    if (this.origOwner != this.tradeShip.owner()) {
+      // Store as variable in case ship is recaptured by previous owner
+      this.wasCaptured = true;
+    }
+
+    // If a player captures another player's port while trading we should delete
+    // the ship.
+    if (this._dstPort.owner().id() == this.srcPort.owner().id()) {
+      this.tradeShip.delete(false);
+      this.active = false;
+      return;
+    }
+
+    if (
+      !this.wasCaptured &&
+      (!this._dstPort.isActive() ||
+        !this.tradeShip.owner().canTrade(this._dstPort.owner()))
+    ) {
+      this.tradeShip.delete(false);
+      this.active = false;
+      return;
+    }
+
+    if (this.wasCaptured) {
+      const ports = this.tradeShip
+        .owner()
+        .units(UnitType.Port)
+        .sort(distSortUnit(this.mg, this.tradeShip));
+      if (ports.length == 0) {
+        this.tradeShip.delete(false);
+        this.active = false;
+        return;
+      } else {
+        this._dstPort = ports[0];
+        this.tradeShip.setDstPort(this._dstPort);
+      }
+    }
+
+    const result = this.pathFinder.nextTile(
+      this.tradeShip.tile(),
+      this._dstPort.tile(),
+    );
+
+    switch (result.type) {
+      case PathFindResultType.Completed:
+        this.complete();
+        break;
+      case PathFindResultType.Pending:
+        // Fire unit event to rerender.
+        this.tradeShip.move(this.tradeShip.tile());
+        break;
+      case PathFindResultType.NextTile:
+        // Update safeFromPirates status
+        if (this.mg.isWater(result.tile) && this.mg.isShoreline(result.tile)) {
+          this.tradeShip.setSafeFromPirates();
+        }
+        this.tradeShip.move(result.tile);
+        break;
+      case PathFindResultType.PathNotFound:
+        consolex.warn("captured trade ship cannot find route");
+        if (this.tradeShip.isActive()) {
+          this.tradeShip.delete(false);
+        }
+        this.active = false;
+        break;
+    }
+  }
+
+  private complete() {
+    this.active = false;
+    this.tradeShip.delete(false);
+    const gold = this.mg
+      .config()
+      .tradeShipGold(
+        this.mg.manhattanDist(this.srcPort.tile(), this._dstPort.tile()),
+      );
+
+    if (this.wasCaptured) {
+      this.tradeShip.owner().addGold(gold);
+      this.mg.displayMessage(
+        `Received ${renderNumber(gold)} gold from ship captured from ${this.origOwner.displayName()}`,
+        MessageType.SUCCESS,
+        this.tradeShip.owner().id(),
+      );
+    } else {
+      this.srcPort.owner().addGold(gold);
+      this._dstPort.owner().addGold(gold);
+      this.mg.displayMessage(
+        `Received ${renderNumber(gold)} gold from trade with ${this.srcPort.owner().displayName()}`,
+        MessageType.SUCCESS,
+        this._dstPort.owner().id(),
+      );
+      this.mg.displayMessage(
+        `Received ${renderNumber(gold)} gold from trade with ${this._dstPort.owner().displayName()}`,
+        MessageType.SUCCESS,
+        this.srcPort.owner().id(),
+      );
+    }
+    return;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+
+  dstPort(): TileRef {
+    return this._dstPort.tile();
+  }
+}
+</file>
+
+<file path="TransportShipExecution.ts">
+import { consolex } from "../Consolex";
+import {
+  Execution,
+  Game,
+  MessageType,
+  Player,
+  PlayerID,
+  TerraNullius,
+  Unit,
+  UnitType,
+} from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { targetTransportTile } from "../game/TransportShipUtils";
+import { PathFindResultType } from "../pathfinding/AStar";
+import { PathFinder } from "../pathfinding/PathFinding";
+import { AttackExecution } from "./AttackExecution";
+
+export class TransportShipExecution implements Execution {
+  private lastMove: number;
+
+  // TODO: make this configurable
+  private ticksPerMove = 1;
+
+  private active = true;
+
+  private mg: Game;
+  private attacker: Player;
+  private target: Player | TerraNullius;
+
+  // TODO make private
+  public path: TileRef[];
+  private dst: TileRef | null;
+
+  private boat: Unit;
+
+  private pathFinder: PathFinder;
+
+  constructor(
+    private attackerID: PlayerID,
+    private targetID: PlayerID | null,
+    private ref: TileRef,
+    private troops: number | null,
+    private src: TileRef | null,
+  ) {}
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+
+  init(mg: Game, ticks: number) {
+    if (!mg.hasPlayer(this.attackerID)) {
+      console.warn(
+        `TransportShipExecution: attacker ${this.attackerID} not found`,
+      );
+      this.active = false;
+      return;
+    }
+    if (this.targetID != null && !mg.hasPlayer(this.targetID)) {
+      console.warn(`TransportShipExecution: target ${this.targetID} not found`);
+      this.active = false;
+      return;
+    }
+
+    this.lastMove = ticks;
+    this.mg = mg;
+    this.pathFinder = PathFinder.Mini(mg, 10_000, 10);
+
+    this.attacker = mg.player(this.attackerID);
+
+    // Notify the target player about the incoming naval invasion
+    if (this.targetID && this.targetID !== mg.terraNullius().id()) {
+      mg.displayMessage(
+        `Naval invasion incoming from ${this.attacker.displayName()}`,
+        MessageType.WARN,
+        this.targetID,
+      );
+    }
+
+    if (
+      this.attacker.units(UnitType.TransportShip).length >=
+      mg.config().boatMaxNumber()
+    ) {
+      mg.displayMessage(
+        `No boats available, max ${mg.config().boatMaxNumber()}`,
+        MessageType.WARN,
+        this.attackerID,
+      );
+      this.active = false;
+      this.attacker.addTroops(this.troops);
+      return;
+    }
+
+    if (this.targetID == null || this.targetID == this.mg.terraNullius().id()) {
+      this.target = mg.terraNullius();
+    } else {
+      this.target = mg.player(this.targetID);
+    }
+
+    if (this.troops == null) {
+      this.troops = this.mg
+        .config()
+        .boatAttackAmount(this.attacker, this.target);
+    }
+
+    this.troops = Math.min(this.troops, this.attacker.troops());
+
+    this.dst = targetTransportTile(this.mg, this.ref);
+    if (this.dst == null) {
+      consolex.warn(
+        `${this.attacker} cannot send ship to ${this.target}, cannot find attack tile`,
+      );
+      this.active = false;
+      return;
+    }
+
+    const closestTileSrc = this.attacker.canBuild(
+      UnitType.TransportShip,
+      this.dst,
+    );
+    if (closestTileSrc == false) {
+      consolex.warn(`can't build transport ship`);
+      this.active = false;
+      return;
+    }
+
+    if (this.src == null) {
+      // Only update the src if it's not already set
+      // because we assume that the src is set to the best spawn tile
+      this.src = closestTileSrc;
+    } else {
+      if (
+        this.mg.owner(this.src) != this.attacker ||
+        !this.mg.isShore(this.src)
+      ) {
+        console.warn(
+          `src is not a shore tile or not owned by: ${this.attacker.name()}`,
+        );
+        this.src = closestTileSrc;
+      }
+    }
+
+    this.boat = this.attacker.buildUnit(UnitType.TransportShip, this.src, {
+      troops: this.troops,
+    });
+  }
+
+  tick(ticks: number) {
+    if (!this.active) {
+      return;
+    }
+    if (!this.boat.isActive()) {
+      this.active = false;
+      return;
+    }
+    if (ticks - this.lastMove < this.ticksPerMove) {
+      return;
+    }
+    this.lastMove = ticks;
+
+    const result = this.pathFinder.nextTile(this.boat.tile(), this.dst);
+    switch (result.type) {
+      case PathFindResultType.Completed:
+        if (this.mg.owner(this.dst) == this.attacker) {
+          this.attacker.addTroops(this.troops);
+          this.boat.delete(false);
+          this.active = false;
+          return;
+        }
+        if (this.target.isPlayer() && this.attacker.isFriendly(this.target)) {
+          this.target.addTroops(this.troops);
+        } else {
+          this.attacker.conquer(this.dst);
+          this.mg.addExecution(
+            new AttackExecution(
+              this.troops,
+              this.attacker.id(),
+              this.targetID,
+              this.dst,
+              false,
+            ),
+          );
+        }
+        this.boat.delete(false);
+        this.active = false;
+        return;
+      case PathFindResultType.NextTile:
+        this.boat.move(result.tile);
+        break;
+      case PathFindResultType.Pending:
+        break;
+      case PathFindResultType.PathNotFound:
+        // TODO: add to poisoned port list
+        consolex.warn(`path not found tot dst`);
+        this.boat.delete(false);
+        this.active = false;
+        return;
+    }
+  }
+
+  owner(): Player {
+    return this.attacker;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+}
+</file>
+
+<file path="Util.ts">
+import { euclDistFN, GameMap, TileRef } from "../game/GameMap";
+
+export function getSpawnTiles(gm: GameMap, tile: TileRef): TileRef[] {
+  return Array.from(gm.bfs(tile, euclDistFN(tile, 4, true))).filter(
+    (t) => !gm.hasOwner(t) && gm.isLand(t),
+  );
+}
+
+export function closestTwoTiles(
+  gm: GameMap,
+  x: Iterable<TileRef>,
+  y: Iterable<TileRef>,
+): { x: TileRef; y: TileRef } {
+  const xSorted = Array.from(x).sort((a, b) => gm.x(a) - gm.x(b));
+  const ySorted = Array.from(y).sort((a, b) => gm.x(a) - gm.x(b));
+
+  if (xSorted.length == 0 || ySorted.length == 0) {
+    return null;
+  }
+
+  let i = 0;
+  let j = 0;
+  let minDistance = Infinity;
+  let result = { x: xSorted[0], y: ySorted[0] };
+
+  while (i < xSorted.length && j < ySorted.length) {
+    const currentX = xSorted[i];
+    const currentY = ySorted[j];
+
+    const distance =
+      Math.abs(gm.x(currentX) - gm.x(currentY)) +
+      Math.abs(gm.y(currentX) - gm.y(currentY));
+
+    if (distance < minDistance) {
+      minDistance = distance;
+      result = { x: currentX, y: currentY };
+    }
+
+    // If we're at the end of X, must move Y forward
+    if (i === xSorted.length - 1) {
+      j++;
+    }
+    // If we're at the end of Y, must move X forward
+    else if (j === ySorted.length - 1) {
+      i++;
+    }
+    // Otherwise, move whichever pointer has smaller x value
+    else if (gm.x(currentX) < gm.x(currentY)) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+
+  return result;
+}
+</file>
+
+<file path="WarshipExecution.ts">
+import { consolex } from "../Consolex";
+import {
+  Execution,
+  Game,
+  Player,
+  PlayerID,
+  Unit,
+  UnitType,
+} from "../game/Game";
+import { TileRef } from "../game/GameMap";
+import { PathFindResultType } from "../pathfinding/AStar";
+import { PathFinder } from "../pathfinding/PathFinding";
+import { PseudoRandom } from "../PseudoRandom";
+import { ShellExecution } from "./ShellExecution";
+
+export class WarshipExecution implements Execution {
+  private random: PseudoRandom;
+
+  private _owner: Player;
+  private active = true;
+  private warship: Unit = null;
+  private mg: Game = null;
+
+  private target: Unit = null;
+  private pathfinder: PathFinder;
+
+  private patrolTile: TileRef;
+
+  private lastShellAttack = 0;
+  private alreadySentShell = new Set<Unit>();
+
+  constructor(
+    private playerID: PlayerID,
+    private patrolCenterTile: TileRef,
+  ) {}
+
+  init(mg: Game, ticks: number): void {
+    if (!mg.hasPlayer(this.playerID)) {
+      console.log(`WarshipExecution: player ${this.playerID} not found`);
+      this.active = false;
+      return;
+    }
+    this.pathfinder = PathFinder.Mini(mg, 5000);
+    this._owner = mg.player(this.playerID);
+    this.mg = mg;
+    this.patrolTile = this.patrolCenterTile;
+    this.random = new PseudoRandom(mg.ticks());
+  }
+
+  // Only for warships with "moveTarget" set
+  goToMoveTarget(target: TileRef): boolean {
+    // Patrol unless we are hunting down a tradeship
+    const result = this.pathfinder.nextTile(this.warship.tile(), target);
+    switch (result.type) {
+      case PathFindResultType.Completed:
+        this.warship.setMoveTarget(null);
+        this.warship.move(this.warship.tile());
+        return;
+      case PathFindResultType.NextTile:
+        this.warship.move(result.tile);
+        break;
+      case PathFindResultType.Pending:
+        this.warship.move(this.warship.tile());
+        break;
+      case PathFindResultType.PathNotFound:
+        consolex.log(`path not found to target`);
+        break;
+    }
+  }
+
+  private shoot() {
+    const shellAttackRate = this.mg.config().warshipShellAttackRate();
+    if (this.mg.ticks() - this.lastShellAttack > shellAttackRate) {
+      this.lastShellAttack = this.mg.ticks();
+      this.mg.addExecution(
+        new ShellExecution(
+          this.warship.tile(),
+          this.warship.owner(),
+          this.warship,
+          this.target,
+        ),
+      );
+      if (!this.target.hasHealth()) {
+        // Don't send multiple shells to target that can be oneshotted
+        this.alreadySentShell.add(this.target);
+        this.target = null;
+        return;
+      }
+    }
+  }
+
+  private patrol() {
+    this.warship.setWarshipTarget(this.target);
+    if (this.target == null || this.target.type() != UnitType.TradeShip) {
+      // Patrol unless we are hunting down a tradeship
+      const result = this.pathfinder.nextTile(
+        this.warship.tile(),
+        this.patrolTile,
+      );
+      switch (result.type) {
+        case PathFindResultType.Completed:
+          this.patrolTile = this.randomTile();
+          this.warship.move(this.warship.tile());
+          break;
+        case PathFindResultType.NextTile:
+          this.warship.move(result.tile);
+          break;
+        case PathFindResultType.Pending:
+          this.warship.move(this.warship.tile());
+          return;
+        case PathFindResultType.PathNotFound:
+          consolex.log(`path not found to patrol tile`);
+          this.patrolTile = this.randomTile();
+          break;
+      }
+    }
+  }
+
+  tick(ticks: number): void {
+    if (this.warship == null) {
+      const spawn = this._owner.canBuild(UnitType.Warship, this.patrolTile);
+      if (spawn == false) {
+        this.active = false;
+        return;
+      }
+      this.warship = this._owner.buildUnit(UnitType.Warship, spawn, {});
+      return;
+    }
+    if (!this.warship.isActive()) {
+      this.active = false;
+      return;
+    }
+    if (this.target != null && !this.target.isActive()) {
+      this.target = null;
+    }
+    const hasPort = this._owner.units(UnitType.Port).length > 0;
+    const ships = this.mg
+      .nearbyUnits(
+        this.warship.tile(),
+        this.mg.config().warshipTargettingRange(),
+        [UnitType.TransportShip, UnitType.Warship, UnitType.TradeShip],
+      )
+      .filter(
+        ({ unit }) =>
+          unit.owner() !== this.warship.owner() &&
+          unit !== this.warship &&
+          !unit.owner().isFriendly(this.warship.owner()) &&
+          !this.alreadySentShell.has(unit) &&
+          (unit.type() !== UnitType.TradeShip ||
+            (hasPort &&
+              unit.dstPort()?.owner() !== this.warship.owner() &&
+              !unit.dstPort()?.owner().isFriendly(this.warship.owner()) &&
+              unit.isSafeFromPirates() !== true)),
+      );
+
+    this.target =
+      ships.sort((a, b) => {
+        const { unit: unitA, distSquared: distA } = a;
+        const { unit: unitB, distSquared: distB } = b;
+
+        // Prioritize Warships
+        if (
+          unitA.type() === UnitType.Warship &&
+          unitB.type() !== UnitType.Warship
+        )
+          return -1;
+        if (
+          unitA.type() !== UnitType.Warship &&
+          unitB.type() === UnitType.Warship
+        )
+          return 1;
+
+        // Then favor Transport Ships over Trade Ships
+        if (
+          unitA.type() === UnitType.TransportShip &&
+          unitB.type() !== UnitType.TransportShip
+        )
+          return -1;
+        if (
+          unitA.type() !== UnitType.TransportShip &&
+          unitB.type() === UnitType.TransportShip
+        )
+          return 1;
+
+        // If both are the same type, sort by distance (lower `distSquared` means closer)
+        return distA - distB;
+      })[0]?.unit ?? null;
+
+    if (this.warship.moveTarget()) {
+      this.goToMoveTarget(this.warship.moveTarget());
+      // If we have a "move target" then we cannot target trade ships as it
+      // requires moving.
+      if (this.target && this.target.type() == UnitType.TradeShip) {
+        this.target = null;
+      }
+    } else if (!this.target || this.target.type() != UnitType.TradeShip) {
+      this.patrol();
+    }
+
+    if (
+      this.target == null ||
+      !this.target.isActive() ||
+      this.target.owner() == this._owner ||
+      this.target.isSafeFromPirates() == true
+    ) {
+      // In case another warship captured or destroyed target, or the target escaped into safe waters
+      this.target = null;
+      return;
+    }
+
+    this.warship.setWarshipTarget(this.target);
+
+    // If we have a move target we do not want to go after trading ships
+    if (!this.target) {
+      return;
+    }
+
+    if (this.target.type() != UnitType.TradeShip) {
+      this.shoot();
+      return;
+    }
+
+    for (let i = 0; i < 2; i++) {
+      // target is trade ship so capture it.
+      const result = this.pathfinder.nextTile(
+        this.warship.tile(),
+        this.target.tile(),
+        5,
+      );
+      switch (result.type) {
+        case PathFindResultType.Completed:
+          this._owner.captureUnit(this.target);
+          this.target = null;
+          this.warship.move(this.warship.tile());
+          return;
+        case PathFindResultType.NextTile:
+          this.warship.move(result.tile);
+          break;
+        case PathFindResultType.Pending:
+          this.warship.move(this.warship.tile());
+          break;
+        case PathFindResultType.PathNotFound:
+          consolex.log(`path not found to target`);
+          break;
+      }
+    }
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+
+  randomTile(): TileRef {
+    let warshipPatrolRange = this.mg.config().warshipPatrolRange();
+    const maxAttemptBeforeExpand: number = warshipPatrolRange * 2;
+    let attemptCount: number = 0;
+    let expandCount: number = 0;
+    while (expandCount < 3) {
+      const x =
+        this.mg.x(this.patrolCenterTile) +
+        this.random.nextInt(-warshipPatrolRange / 2, warshipPatrolRange / 2);
+      const y =
+        this.mg.y(this.patrolCenterTile) +
+        this.random.nextInt(-warshipPatrolRange / 2, warshipPatrolRange / 2);
+      if (!this.mg.isValidCoord(x, y)) {
+        continue;
+      }
+      const tile = this.mg.ref(x, y);
+      if (!this.mg.isOcean(tile) || this.mg.isShoreline(tile)) {
+        attemptCount++;
+        if (attemptCount === maxAttemptBeforeExpand) {
+          expandCount++;
+          attemptCount = 0;
+          warshipPatrolRange =
+            warshipPatrolRange + Math.floor(warshipPatrolRange / 2);
+        }
+        continue;
+      }
+      return tile;
+    }
+  }
+}
+</file>
+
+<file path="WinCheckExecution.ts">
+import { GameEvent } from "../EventBus";
+import {
+  ColoredTeams,
+  Execution,
+  Game,
+  GameMode,
+  Player,
+  Team,
+} from "../game/Game";
+
+export class WinEvent implements GameEvent {
+  constructor(public readonly winner: Player) {}
+}
+
+export class WinCheckExecution implements Execution {
+  private active = true;
+
+  private mg: Game;
+
+  constructor() {}
+
+  init(mg: Game, ticks: number) {
+    this.mg = mg;
+  }
+
+  tick(ticks: number) {
+    if (ticks % 10 != 0) {
+      return;
+    }
+    if (this.mg.config().gameConfig().gameMode == GameMode.FFA) {
+      this.checkWinnerFFA();
+    } else {
+      this.checkWinnerTeam();
+    }
+  }
+
+  checkWinnerFFA(): void {
+    const sorted = this.mg
+      .players()
+      .sort((a, b) => b.numTilesOwned() - a.numTilesOwned());
+    if (sorted.length == 0) {
+      return;
+    }
+    const max = sorted[0];
+    const numTilesWithoutFallout =
+      this.mg.numLandTiles() - this.mg.numTilesWithFallout();
+    if (
+      (max.numTilesOwned() / numTilesWithoutFallout) * 100 >
+      this.mg.config().percentageTilesOwnedToWin()
+    ) {
+      this.mg.setWinner(max, this.mg.stats().stats());
+      console.log(`${max.name()} has won the game`);
+      this.active = false;
+    }
+  }
+
+  checkWinnerTeam(): void {
+    const teamToTiles = new Map<Team, number>();
+    for (const player of this.mg.players()) {
+      teamToTiles.set(
+        player.team(),
+        (teamToTiles.get(player.team()) ?? 0) + player.numTilesOwned(),
+      );
+    }
+    const sorted = Array.from(teamToTiles.entries()).sort(
+      (a, b) => b[1] - a[1],
+    );
+    if (sorted.length == 0) {
+      return;
+    }
+    const max = sorted[0];
+    const numTilesWithoutFallout =
+      this.mg.numLandTiles() - this.mg.numTilesWithFallout();
+    const percentage = (max[1] / numTilesWithoutFallout) * 100;
+    if (percentage > this.mg.config().percentageTilesOwnedToWin()) {
+      if (max[0] == ColoredTeams.Bot) return;
+      this.mg.setWinner(max[0], this.mg.stats().stats());
+      console.log(`${max[0]} has won the game`);
+      this.active = false;
+    }
+  }
+  owner(): Player {
+    return null;
+  }
+
+  isActive(): boolean {
+    return this.active;
+  }
+
+  activeDuringSpawnPhase(): boolean {
+    return false;
+  }
+}
+</file>
+
+</files>

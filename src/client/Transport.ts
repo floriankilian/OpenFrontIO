@@ -1,4 +1,3 @@
-import { SendLogEvent } from "../core/Consolex";
 import { EventBus, GameEvent } from "../core/EventBus";
 import {
   AllPlayers,
