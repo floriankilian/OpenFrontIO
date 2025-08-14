@@ -1,9 +1,9 @@
 import { html, LitElement } from "lit";
 import { customElement } from "lit/decorators.js";
-import portIcon from "../../../../resources/images/AnchorIcon.png";
+import portIcon from "../../../../resources/images/AnchorIcon.svg";
 import cityIcon from "../../../../resources/images/CityIconWhite.svg";
 import factoryIcon from "../../../../resources/images/FactoryIconWhite.svg";
-import missileSiloIcon from "../../../../resources/images/MissileSiloUnit.png";
+import missileSiloIcon from "../../../../resources/images/MissileSiloUnit.svg";
 import defensePostIcon from "../../../../resources/images/ShieldIconWhite.svg";
 import samLauncherIcon from "../../../../resources/non-commercial/svg/SamLauncherIconWhite.svg";
 import { EventBus } from "../../../core/EventBus";
