@@ -15,16 +15,6 @@ on:
 permissions: {}
 
 jobs:
-  auto-assign:
-    name: Auto-assign author of a PR
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    if: github.event.action == 'opened'
-    permissions:
-      pull-requests: write
-    steps:
-      - uses: toshimaru/auto-author-assign@7e15cd70c245ad136377c3fab3479815df10d844
-
   validate-description:
     name: Validate Description
     runs-on: ubuntu-latest
